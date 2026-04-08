@@ -335,12 +335,12 @@ export function encodePayload(type: PayloadType, fields: PayloadFields[typeof ty
 		}
 		case 'mecard': {
 			const f = fields as PayloadFields['mecard'];
-			let s = `MECARD:N:${f.name};`;
-			if (f.phone) s += `TEL:${f.phone};`;
-			if (f.email) s += `EMAIL:${f.email};`;
-			if (f.url) s += `URL:${f.url};`;
-			if (f.address) s += `ADR:${f.address};`;
-			if (f.note) s += `NOTE:${f.note};`;
+			let s = `MECARD:N:${escapeWifi(f.name)};`;
+			if (f.phone) s += `TEL:${escapeWifi(f.phone)};`;
+			if (f.email) s += `EMAIL:${escapeWifi(f.email)};`;
+			if (f.url) s += `URL:${escapeWifi(f.url)};`;
+			if (f.address) s += `ADR:${escapeWifi(f.address)};`;
+			if (f.note) s += `NOTE:${escapeWifi(f.note)};`;
 			s += ';';
 			return s;
 		}
