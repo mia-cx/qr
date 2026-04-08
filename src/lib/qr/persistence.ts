@@ -1,3 +1,5 @@
+import { persistentAtom } from '@nanostores/persistent';
+
 import type { ErrorCorrectionLevel, ModuleStyle } from './generate';
 import { defaultPayloads, type PayloadFields, type PayloadType } from './payloads';
 
@@ -13,11 +15,6 @@ export interface QRDraftSnapshot {
 	bgColor: string;
 	logo?: string;
 	frameText: string;
-}
-
-interface StorageLike {
-	getItem(key: string): string | null;
-	setItem(key: string, value: string): void;
 }
 
 const PAYLOAD_TYPES: PayloadType[] = [
@@ -131,18 +128,6 @@ function normalizePayloads(value: unknown): PayloadFields {
 	};
 }
 
-function getStorage(storage?: StorageLike): StorageLike | null {
-	if (storage) {
-		return storage;
-	}
-
-	if (typeof localStorage === 'undefined') {
-		return null;
-	}
-
-	return localStorage;
-}
-
 export function createDefaultQrDraft(): QRDraftSnapshot {
 	return {
 		payloadType: 'url',
@@ -187,29 +172,21 @@ export function normalizeQrDraft(value: unknown): QRDraftSnapshot {
 	};
 }
 
-export function loadPersistedQrDraft(storage?: StorageLike): QRDraftSnapshot {
-	const target = getStorage(storage);
-
-	if (!target) {
-		return createDefaultQrDraft();
-	}
-
+function decodeQrDraft(raw: string): QRDraftSnapshot {
 	try {
-		const raw = target.getItem(QR_DRAFT_STORAGE_KEY);
-		return raw ? normalizeQrDraft(JSON.parse(raw)) : createDefaultQrDraft();
+		return normalizeQrDraft(JSON.parse(raw));
 	} catch {
 		return createDefaultQrDraft();
 	}
 }
 
-export function persistQrDraft(snapshot: QRDraftSnapshot, storage?: StorageLike): void {
-	const target = getStorage(storage);
-
-	if (!target) {
-		return;
-	}
-
-	try {
-		target.setItem(QR_DRAFT_STORAGE_KEY, JSON.stringify(snapshot));
-	} catch {}
+export function createQrDraftStore(key = QR_DRAFT_STORAGE_KEY) {
+	return persistentAtom<QRDraftSnapshot>(key, createDefaultQrDraft(), {
+		encode: (snapshot) => JSON.stringify(normalizeQrDraft(snapshot)),
+		decode: decodeQrDraft
+	});
 }
+
+export type QRDraftStore = ReturnType<typeof createQrDraftStore>;
+
+export const qrDraftStore = createQrDraftStore();
