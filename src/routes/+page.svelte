@@ -1,6 +1,15 @@
 <script lang="ts">
+	import { page } from '$app/state';
+	import { deLocalizeUrl } from '$lib/paraglide/runtime';
 	import { qrState } from '$lib/qr/state.svelte';
-	import { themes, getTheme, setTheme, getQrColors, themeStore } from '$lib/themes';
+	import {
+		themes,
+		getTheme,
+		setTheme,
+		getQrColors,
+		themeStore,
+		applyDocumentTheme
+	} from '$lib/themes';
 	import { generateQRSvg, generateQRCanvas } from '$lib/qr/generate';
 	import {
 		readQRFromFile,
@@ -15,6 +24,7 @@
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import DateRangePicker from '$lib/components/DateRangePicker.svelte';
 	import ReaderResult from '$lib/components/ReaderResult.svelte';
+	import { getStudioSectionForPath } from '$lib/routes/studio';
 
 	// --- State ---
 	let activeSection = $state<'generate' | 'read'>('generate');
@@ -65,10 +75,14 @@
 	const svgOutput = $derived(qrState.encodedData ? generateQRSvg(getCurrentQrOptions()) : '');
 
 	let previewSrc = $state('');
-	const previewOptions = $derived(qrState.encodedData ? {
-		...getCurrentQrOptions(),
-		pixelSize: 1
-	} : null);
+	const previewOptions = $derived(
+		qrState.encodedData
+			? {
+					...getCurrentQrOptions(),
+					pixelSize: 1
+				}
+			: null
+	);
 
 	$effect(() => {
 		if (previewOptions) {
@@ -162,16 +176,25 @@
 
 	// --- Theme ---
 	let currentTheme = $state(themeStore.get());
+	const routeSection = $derived(getStudioSectionForPath(deLocalizeUrl(page.url).pathname));
 
-	onMount(() => {
-		switchTheme(currentTheme);
+	onMount(() =>
+		themeStore.subscribe((id) => {
+			currentTheme = id;
+			applyDocumentTheme(id);
+			const { fg, bg } = getQrColors();
+			qrState.applyThemeColors(fg, bg);
+		})
+	);
+
+	$effect(() => {
+		if (routeSection) {
+			activeSection = routeSection;
+		}
 	});
 
 	function switchTheme(id: string) {
-		currentTheme = id;
 		setTheme(id);
-		const { fg, bg } = getQrColors();
-		qrState.applyThemeColors(fg, bg);
 	}
 
 	onDestroy(() => {
@@ -585,11 +608,40 @@
 											oninput={(e) =>
 												qrState.setPayloadField('wifi', 'password', e.currentTarget.value)}
 										/>
-										<button type="button" class="password-eye" aria-label={showWifiPassword ? 'Hide password' : 'Show password'} onclick={() => showWifiPassword = !showWifiPassword}>
+										<button
+											type="button"
+											class="password-eye"
+											aria-label={showWifiPassword ? 'Hide password' : 'Show password'}
+											onclick={() => (showWifiPassword = !showWifiPassword)}
+										>
 											{#if showWifiPassword}
-												<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z"/><circle cx="8" cy="8" r="2"/></svg>
+												<svg
+													width="16"
+													height="16"
+													viewBox="0 0 16 16"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="1.5"
+													><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z" /><circle
+														cx="8"
+														cy="8"
+														r="2"
+													/></svg
+												>
 											{:else}
-												<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z"/><circle cx="8" cy="8" r="2"/><path d="M3 13L13 3"/></svg>
+												<svg
+													width="16"
+													height="16"
+													viewBox="0 0 16 16"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="1.5"
+													><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z" /><circle
+														cx="8"
+														cy="8"
+														r="2"
+													/><path d="M3 13L13 3" /></svg
+												>
 											{/if}
 										</button>
 									</div>
@@ -938,7 +990,17 @@
 						<h4 id="reader-upload-title" class="drop-text">Drag & drop an image here</h4>
 						<div class="browse-capture-row">
 							<label class="browse-btn">
-								<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13V4a1 1 0 011-1h3l2 2h5a1 1 0 011 1v7a1 1 0 01-1 1H3a1 1 0 01-1-1z"/></svg>
+								<svg
+									width="14"
+									height="14"
+									viewBox="0 0 16 16"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									><path
+										d="M2 13V4a1 1 0 011-1h3l2 2h5a1 1 0 011 1v7a1 1 0 01-1 1H3a1 1 0 01-1-1z"
+									/></svg
+								>
 								Browse
 								<input
 									type="file"

@@ -11,9 +11,27 @@ export interface ThemeMeta {
 export const themes: ThemeMeta[] = [
 	{ id: 'mono-light', name: 'Light', accent: '#000000', bg: '#ffffff', fg: '#000000' },
 	{ id: 'mono-dark', name: 'Dark', accent: '#ffffff', bg: '#000000', fg: '#ffffff' },
-	{ id: 'catppuccin-latte', name: 'Catppuccin Latte', accent: '#8839ef', bg: '#eff1f5', fg: '#4c4f69' },
-	{ id: 'catppuccin-mocha', name: 'Catppuccin Mocha', accent: '#cba6f7', bg: '#1e1e2e', fg: '#cdd6f4' },
-	{ id: 'solarized-light', name: 'Solarized Light', accent: '#268bd2', bg: '#fdf6e3', fg: '#657b83' },
+	{
+		id: 'catppuccin-latte',
+		name: 'Catppuccin Latte',
+		accent: '#8839ef',
+		bg: '#eff1f5',
+		fg: '#4c4f69'
+	},
+	{
+		id: 'catppuccin-mocha',
+		name: 'Catppuccin Mocha',
+		accent: '#cba6f7',
+		bg: '#1e1e2e',
+		fg: '#cdd6f4'
+	},
+	{
+		id: 'solarized-light',
+		name: 'Solarized Light',
+		accent: '#268bd2',
+		bg: '#fdf6e3',
+		fg: '#657b83'
+	},
 	{ id: 'solarized-dark', name: 'Solarized Dark', accent: '#268bd2', bg: '#002b36', fg: '#839496' },
 	{ id: 'nord', name: 'Nord', accent: '#88c0d0', bg: '#2e3440', fg: '#eceff4' },
 	{ id: 'rose-pine', name: 'Rose Pine', accent: '#c4a7e7', bg: '#191724', fg: '#e0def4' },
@@ -28,12 +46,23 @@ export const DEFAULT_THEME = 'catppuccin-mocha';
 export const themeStore = persistentAtom<string>('theme', DEFAULT_THEME);
 
 export function getTheme(id: string): ThemeMeta {
-	return themes.find((t) => t.id === id) ?? themes[0];
+	return themes.find((t) => t.id === id) ?? themes.find((t) => t.id === DEFAULT_THEME) ?? themes[0];
+}
+
+export function applyDocumentTheme(id: string): void {
+	if (typeof document === 'undefined') return;
+
+	const theme = getTheme(id);
+	document.documentElement.setAttribute('data-theme', theme.id);
+	document.documentElement.style.background = theme.bg;
+	document.body?.style.setProperty('background', theme.bg);
+	document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme.bg);
 }
 
 export function setTheme(id: string): void {
-	themeStore.set(id);
-	document.documentElement.setAttribute('data-theme', id);
+	const theme = getTheme(id);
+	themeStore.set(theme.id);
+	applyDocumentTheme(theme.id);
 }
 
 export function getQrColors(): { fg: string; bg: string } {
