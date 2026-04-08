@@ -101,7 +101,7 @@ export function decodePayload(raw: string): { type: PayloadType; fields: Payload
 	// vCard
 	if (raw.startsWith('BEGIN:VCARD')) {
 		const line = (key: string) => {
-			const m = raw.match(new RegExp(`^${key}:(.*)$`, 'm'));
+			const m = raw.match(new RegExp(`^${key}(?:;[^:]*)?:(.*)$`, 'm'));
 			return m?.[1]?.replace(/\\(.)/g, '$1') ?? '';
 		};
 		const n = line('N').split(';');
@@ -123,7 +123,7 @@ export function decodePayload(raw: string): { type: PayloadType; fields: Payload
 	// Calendar
 	if (raw.startsWith('BEGIN:VCALENDAR')) {
 		const line = (key: string) => {
-			const m = raw.match(new RegExp(`^${key}:(.*)$`, 'm'));
+			const m = raw.match(new RegExp(`^${key}(?:;[^:]*)?:(.*)$`, 'm'));
 			return m?.[1] ?? '';
 		};
 		const parseDt = (dt: string) => {
@@ -148,8 +148,8 @@ export function decodePayload(raw: string): { type: PayloadType; fields: Payload
 	// MeCard
 	if (raw.startsWith('MECARD:')) {
 		const get = (key: string) => {
-			const m = raw.match(new RegExp(`${key}:([^;]*)`));
-			return m?.[1] ?? '';
+			const m = raw.match(new RegExp(`${key}:((?:[^\\\\;]|\\\\.)*)`));
+			return m?.[1]?.replace(/\\(.)/g, '$1') ?? '';
 		};
 		return {
 			type: 'mecard',

@@ -98,6 +98,9 @@ export function createScreenCapture(
 	async function start() {
 		try {
 			stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+			stream.getVideoTracks()[0]?.addEventListener('ended', () => {
+				stop();
+			});
 			video = document.createElement('video');
 			video.srcObject = stream;
 			video.playsInline = true;

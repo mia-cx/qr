@@ -88,9 +88,11 @@
 	$effect(() => {
 		if (previewOptions) {
 			const c = document.createElement('canvas');
-			generateQRCanvas(c, previewOptions).then(() => {
-				previewSrc = c.toDataURL('image/png');
-			});
+			generateQRCanvas(c, previewOptions)
+				.then(() => {
+					previewSrc = c.toDataURL('image/png');
+				})
+				.catch(() => {});
 		} else {
 			previewSrc = '';
 		}
@@ -222,7 +224,11 @@
 			download(blob, 'qr.svg');
 		} else {
 			if (!exportCanvas) return;
-			await generateQRCanvas(exportCanvas, qrOptions);
+			try {
+				await generateQRCanvas(exportCanvas, qrOptions);
+			} catch {
+				return;
+			}
 			const mimeType = fmt === 'png' ? 'image/png' : 'image/jpeg';
 			exportCanvas.toBlob(
 				(blob) => {
