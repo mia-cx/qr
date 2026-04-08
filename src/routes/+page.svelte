@@ -241,7 +241,7 @@
 	function loadResultIntoGenerator() {
 		if (!readerResult) return;
 
-		const decoded = decodePayload(readerResult.trim());
+		const decoded = decodePayload(readerResult);
 		qrState.payloadType = decoded.type;
 		qrState.payloads[decoded.type] = decoded.fields as never;
 		activeSection = 'generate';

@@ -1,5 +1,14 @@
 <script lang="ts">
-	import { decodePayload, payloadLabels, type PayloadType, type PayloadFields } from '$lib/qr/payloads';
+	import {
+		decodePayload,
+		encodeCalendarPayload,
+		encodeVcardPayload,
+		getSafeExternalHref,
+		normalizeLineEndingsForFile,
+		payloadLabels,
+		type PayloadType,
+		type PayloadFields
+	} from '$lib/qr/payloads';
 
 	interface Props {
 		raw: string;
@@ -26,39 +35,22 @@
 
 	function downloadVcf() {
 		const f = fields as PayloadFields['vcard'];
-		const lines = [
-			'BEGIN:VCARD',
-			'VERSION:3.0',
-			`N:${f.lastName};${f.firstName};;;`,
-			`FN:${f.firstName} ${f.lastName}`
-		];
-		if (f.phone) lines.push(`TEL:${f.phone}`);
-		if (f.email) lines.push(`EMAIL:${f.email}`);
-		if (f.org) lines.push(`ORG:${f.org}`);
-		if (f.title) lines.push(`TITLE:${f.title}`);
-		if (f.url) lines.push(`URL:${f.url}`);
-		if (f.address) lines.push(`ADR:;;${f.address};;;;`);
-		lines.push('END:VCARD');
 		const name = `${f.firstName}_${f.lastName}`.replace(/\s+/g, '_') || 'contact';
-		downloadFile(`${name}.vcf`, lines.join('\r\n'), 'text/vcard');
+		downloadFile(
+			`${name}.vcf`,
+			normalizeLineEndingsForFile(encodeVcardPayload(f)),
+			'text/vcard'
+		);
 	}
 
 	function downloadIcs() {
 		const f = fields as PayloadFields['calendar'];
-		const fmt = (d: string) => d.replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-		const lines = [
-			'BEGIN:VCALENDAR',
-			'VERSION:2.0',
-			'BEGIN:VEVENT',
-			`SUMMARY:${f.title}`,
-			`DTSTART:${fmt(f.start)}`,
-			`DTEND:${fmt(f.end)}`
-		];
-		if (f.location) lines.push(`LOCATION:${f.location}`);
-		if (f.description) lines.push(`DESCRIPTION:${f.description}`);
-		lines.push('END:VEVENT', 'END:VCALENDAR');
 		const name = f.title.replace(/\s+/g, '_') || 'event';
-		downloadFile(`${name}.ics`, lines.join('\r\n'), 'text/calendar');
+		downloadFile(
+			`${name}.ics`,
+			normalizeLineEndingsForFile(encodeCalendarPayload(f)),
+			'text/calendar'
+		);
 	}
 </script>
 
@@ -70,7 +62,12 @@
 	<div class="result-body">
 		{#if type === 'url'}
 			{@const f = fields as PayloadFields['url']}
-			<a href={f.url} target="_blank" rel="noopener noreferrer" class="result-link">{f.url}</a>
+			{@const safeHref = getSafeExternalHref(f.url)}
+			{#if safeHref}
+				<a href={safeHref} target="_blank" rel="noopener noreferrer" class="result-link">{f.url}</a>
+			{:else}
+				<span class="result-field-value">{f.url}</span>
+			{/if}
 
 		{:else if type === 'wifi'}
 			{@const f = fields as PayloadFields['wifi']}
@@ -141,7 +138,14 @@
 				{/if}
 				{#if f.phone}<a href="tel:{f.phone}" class="result-link">{f.phone}</a>{/if}
 				{#if f.email}<a href="mailto:{f.email}" class="result-link">{f.email}</a>{/if}
-				{#if f.url}<a href={f.url} target="_blank" rel="noopener noreferrer" class="result-link">{f.url}</a>{/if}
+				{#if f.url}
+					{@const safeHref = getSafeExternalHref(f.url)}
+					{#if safeHref}
+						<a href={safeHref} target="_blank" rel="noopener noreferrer" class="result-link">{f.url}</a>
+					{:else}
+						<span class="result-field-muted">{f.url}</span>
+					{/if}
+				{/if}
 				{#if f.address}<span class="result-field-muted">{f.address}</span>{/if}
 			</div>
 
@@ -169,7 +173,14 @@
 				<span class="result-field-value contact-name">{f.name}</span>
 				{#if f.phone}<a href="tel:{f.phone}" class="result-link">{f.phone}</a>{/if}
 				{#if f.email}<a href="mailto:{f.email}" class="result-link">{f.email}</a>{/if}
-				{#if f.url}<a href={f.url} target="_blank" rel="noopener noreferrer" class="result-link">{f.url}</a>{/if}
+				{#if f.url}
+					{@const safeHref = getSafeExternalHref(f.url)}
+					{#if safeHref}
+						<a href={safeHref} target="_blank" rel="noopener noreferrer" class="result-link">{f.url}</a>
+					{:else}
+						<span class="result-field-muted">{f.url}</span>
+					{/if}
+				{/if}
 				{#if f.address}<span class="result-field-muted">{f.address}</span>{/if}
 				{#if f.note}<pre class="result-text">{f.note}</pre>{/if}
 			</div>

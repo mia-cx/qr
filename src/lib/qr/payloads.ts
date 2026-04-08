@@ -215,7 +215,63 @@ function escapeWifi(s: string): string {
 }
 
 function escapeVcard(s: string): string {
-	return s.replace(/([,;\\])/g, '\\$1');
+	return s.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([,;])/g, '\\$1');
+}
+
+function escapeICalendarText(s: string): string {
+	return s.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([,;])/g, '\\$1');
+}
+
+function formatCalendarDateTime(value: string): string {
+	return value.replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+
+export function encodeVcardPayload(fields: PayloadFields['vcard']): string {
+	const lines = [
+		'BEGIN:VCARD',
+		'VERSION:3.0',
+		`N:${escapeVcard(fields.lastName)};${escapeVcard(fields.firstName)};;;`,
+		`FN:${escapeVcard([fields.firstName, fields.lastName].filter(Boolean).join(' '))}`
+	];
+
+	if (fields.phone) lines.push(`TEL:${escapeVcard(fields.phone)}`);
+	if (fields.email) lines.push(`EMAIL:${escapeVcard(fields.email)}`);
+	if (fields.org) lines.push(`ORG:${escapeVcard(fields.org)}`);
+	if (fields.title) lines.push(`TITLE:${escapeVcard(fields.title)}`);
+	if (fields.url) lines.push(`URL:${escapeVcard(fields.url)}`);
+	if (fields.address) lines.push(`ADR:;;${escapeVcard(fields.address)};;;;`);
+
+	lines.push('END:VCARD');
+	return lines.join('\n');
+}
+
+export function encodeCalendarPayload(fields: PayloadFields['calendar']): string {
+	const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT'];
+
+	if (fields.title) lines.push(`SUMMARY:${escapeICalendarText(fields.title)}`);
+	if (fields.start) lines.push(`DTSTART:${formatCalendarDateTime(fields.start)}`);
+	if (fields.end) lines.push(`DTEND:${formatCalendarDateTime(fields.end)}`);
+	if (fields.location) lines.push(`LOCATION:${escapeICalendarText(fields.location)}`);
+	if (fields.description) lines.push(`DESCRIPTION:${escapeICalendarText(fields.description)}`);
+
+	lines.push('END:VEVENT', 'END:VCALENDAR');
+	return lines.join('\n');
+}
+
+export function normalizeLineEndingsForFile(content: string): string {
+	return content.replace(/\r?\n/g, '\r\n');
+}
+
+export function getSafeExternalHref(value: string): string | null {
+	if (!value) return null;
+
+	try {
+		const normalized = value.startsWith('www.') ? `https://${value}` : value;
+		const url = new URL(normalized);
+		return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+	} catch {
+		return null;
+	}
 }
 
 export function encodePayload(type: PayloadType, fields: PayloadFields[typeof type]): string {
@@ -246,36 +302,10 @@ export function encodePayload(type: PayloadType, fields: PayloadFields[typeof ty
 			return `mailto:${f.to}?subject=${encodeURIComponent(f.subject)}&body=${encodeURIComponent(f.body)}`;
 		}
 		case 'vcard': {
-			const f = fields as PayloadFields['vcard'];
-			const lines = [
-				'BEGIN:VCARD',
-				'VERSION:3.0',
-				`N:${escapeVcard(f.lastName)};${escapeVcard(f.firstName)};;;`,
-				`FN:${escapeVcard(f.firstName)} ${escapeVcard(f.lastName)}`
-			];
-			if (f.phone) lines.push(`TEL:${f.phone}`);
-			if (f.email) lines.push(`EMAIL:${f.email}`);
-			if (f.org) lines.push(`ORG:${escapeVcard(f.org)}`);
-			if (f.title) lines.push(`TITLE:${escapeVcard(f.title)}`);
-			if (f.url) lines.push(`URL:${f.url}`);
-			if (f.address) lines.push(`ADR:;;${escapeVcard(f.address)};;;;`);
-			lines.push('END:VCARD');
-			return lines.join('\n');
+			return encodeVcardPayload(fields as PayloadFields['vcard']);
 		}
 		case 'calendar': {
-			const f = fields as PayloadFields['calendar'];
-			const fmt = (d: string) => d.replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-			const lines = [
-				'BEGIN:VCALENDAR',
-				'BEGIN:VEVENT',
-				`SUMMARY:${f.title}`,
-				`DTSTART:${fmt(f.start)}`,
-				`DTEND:${fmt(f.end)}`
-			];
-			if (f.location) lines.push(`LOCATION:${f.location}`);
-			if (f.description) lines.push(`DESCRIPTION:${f.description}`);
-			lines.push('END:VEVENT', 'END:VCALENDAR');
-			return lines.join('\n');
+			return encodeCalendarPayload(fields as PayloadFields['calendar']);
 		}
 		case 'geo': {
 			const f = fields as PayloadFields['geo'];

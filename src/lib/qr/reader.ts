@@ -1,5 +1,8 @@
 import jsQR from 'jsqr';
 
+const MAX_INPUT_FILE_BYTES = 12 * 1024 * 1024;
+const MAX_IMAGE_PIXELS = 4_000_000;
+
 export interface QRReadResult {
 	data: string;
 	success: boolean;
@@ -14,17 +17,47 @@ export function readQRFromImageData(imageData: ImageData): QRReadResult {
 	return { data: '', success: false, error: 'No QR code found in image' };
 }
 
+export function constrainImageDimensions(
+	width: number,
+	height: number,
+	maxPixels = MAX_IMAGE_PIXELS
+): { width: number; height: number } {
+	if (width <= 0 || height <= 0) return { width: 0, height: 0 };
+
+	const totalPixels = width * height;
+	if (totalPixels <= maxPixels) {
+		return { width, height };
+	}
+
+	const scale = Math.sqrt(maxPixels / totalPixels);
+	return {
+		width: Math.max(1, Math.floor(width * scale)),
+		height: Math.max(1, Math.floor(height * scale))
+	};
+}
+
 export async function readQRFromFile(file: File): Promise<QRReadResult> {
+	if (file.size > MAX_INPUT_FILE_BYTES) {
+		return { data: '', success: false, error: 'Image is too large to scan safely' };
+	}
+
 	return new Promise((resolve) => {
 		const img = new Image();
 		const objectUrl = URL.createObjectURL(file);
 
 		img.onload = () => {
+			const { width, height } = constrainImageDimensions(img.width, img.height);
+			if (!width || !height) {
+				URL.revokeObjectURL(objectUrl);
+				resolve({ data: '', success: false, error: 'Failed to load image' });
+				return;
+			}
+
 			const canvas = document.createElement('canvas');
-			canvas.width = img.width;
-			canvas.height = img.height;
+			canvas.width = width;
+			canvas.height = height;
 			const ctx = canvas.getContext('2d')!;
-			ctx.drawImage(img, 0, 0);
+			ctx.drawImage(img, 0, 0, width, height);
 			const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 			URL.revokeObjectURL(objectUrl);
 			resolve(readQRFromImageData(imageData));

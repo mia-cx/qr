@@ -53,19 +53,24 @@
 	let rangeValue = $state<DateRange>({ start: undefined, end: undefined });
 	let startTime = $state('00:00');
 	let endTime = $state('00:00');
-	let initialized = false;
+	let lastSyncedStart = $state<string | undefined>(undefined);
+	let lastSyncedEnd = $state<string | undefined>(undefined);
 
 	$effect(() => {
-		if (!initialized) {
-			rangeValue = { start: parseDate(start), end: parseDate(end) };
-			startTime = parseTime(start);
-			endTime = parseTime(end);
-			initialized = true;
-		}
+		if (start === lastSyncedStart && end === lastSyncedEnd) return;
+		rangeValue = { start: parseDate(start), end: parseDate(end) };
+		startTime = parseTime(start);
+		endTime = parseTime(end);
+		lastSyncedStart = start;
+		lastSyncedEnd = end;
 	});
 
 	function emitChange() {
-		onchange(formatDatetime(rangeValue.start, startTime), formatDatetime(rangeValue.end, endTime));
+		const nextStart = formatDatetime(rangeValue.start, startTime);
+		const nextEnd = formatDatetime(rangeValue.end, endTime);
+		lastSyncedStart = nextStart;
+		lastSyncedEnd = nextEnd;
+		onchange(nextStart, nextEnd);
 	}
 
 	function handleRangeChange(val: DateRange) {
