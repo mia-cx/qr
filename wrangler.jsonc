@@ -1,0 +1,28 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "qr",
+	"compatibility_date": "2026-04-08",
+	"compatibility_flags": ["nodejs_als"],
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".svelte-kit/cloudflare"
+	},
+	"workers_dev": true,
+	"preview_urls": true,
+	"env": {
+		"production": {
+			"routes": [
+				{
+					"pattern": "qr.mia.cx",
+					"zone_name": "mia.cx",
+					"custom_domain": true
+				},
+				{
+					"pattern": "qr.mia.cx/*",
+					"zone_name": "mia.cx"
+				}
+			]
+		}
+	}
+}
