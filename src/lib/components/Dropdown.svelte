@@ -53,7 +53,7 @@
 		const horizontal =
 			align === 'right' ? `right: ${window.innerWidth - rect.right}px;` : `left: ${rect.left}px;`;
 
-		menuStyle = `top: ${top}px; ${horizontal} width: ${rect.width}px;`;
+		menuStyle = `top: ${top}px; ${horizontal} min-width: ${rect.width}px;`;
 	}
 
 	function openMenu(index = items.findIndex((item) => item.value === value)) {

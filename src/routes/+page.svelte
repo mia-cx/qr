@@ -9,11 +9,12 @@
 		createScreenCapture,
 		type QRReadResult
 	} from '$lib/qr/reader';
-	import { payloadLabels, type PayloadType } from '$lib/qr/payloads';
+	import { payloadLabels, decodePayload, type PayloadType } from '$lib/qr/payloads';
 	import type { ErrorCorrectionLevel } from '$lib/qr/generate';
 	import { onDestroy, onMount } from 'svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
 	import DateRangePicker from '$lib/components/DateRangePicker.svelte';
+	import ReaderResult from '$lib/components/ReaderResult.svelte';
 
 	// --- State ---
 	let activeSection = $state<'generate' | 'read'>('generate');
@@ -23,6 +24,7 @@
 	let readerResult = $state('');
 	let readerError = $state('');
 	let isDragging = $state(false);
+	let showWifiPassword = $state(false);
 	let isCapturing = $state(false);
 	let captureMode = $state<'webcam' | 'screen' | null>(null);
 	let showCaptureMenu = $state(false);
@@ -61,6 +63,22 @@
 	}
 
 	const svgOutput = $derived(qrState.encodedData ? generateQRSvg(getCurrentQrOptions()) : '');
+
+	let previewSrc = $state('');
+	const previewOptions = $derived(qrState.encodedData ? {
+		...getCurrentQrOptions(),
+		pixelSize: 1
+	} : null);
+
+	$effect(() => {
+		if (previewOptions) {
+			const c = document.createElement('canvas');
+			generateQRCanvas(c, previewOptions);
+			previewSrc = c.toDataURL('image/png');
+		} else {
+			previewSrc = '';
+		}
+	});
 
 	// --- Auto-detection ---
 	const urlPattern = /^(https?:\/\/|www\.)/i;
@@ -143,11 +161,14 @@
 	});
 
 	// --- Theme ---
+	let currentTheme = $state(themeStore.get());
+
 	onMount(() => {
-		switchTheme(themeStore.get());
+		switchTheme(currentTheme);
 	});
 
 	function switchTheme(id: string) {
+		currentTheme = id;
 		setTheme(id);
 		const { fg, bg } = getQrColors();
 		qrState.applyThemeColors(fg, bg);
@@ -220,8 +241,10 @@
 	function loadResultIntoGenerator() {
 		if (!readerResult) return;
 
+		const decoded = decodePayload(readerResult.trim());
+		qrState.payloadType = decoded.type;
+		qrState.payloads[decoded.type] = decoded.fields as never;
 		activeSection = 'generate';
-		handlePrimaryInput(readerResult.trim());
 	}
 
 	// --- Reader ---
@@ -419,49 +442,50 @@
 <main class="page">
 	<h1 class="sr-only">QR code generator and reader</h1>
 	<div class="card" aria-labelledby="app-subtitle">
+		<header class="card-header">
+			<div class="header-left" id="app-subtitle">
+				<span class="logo">QR</span>
+				<span class="logo-domain">.mia.cx</span>
+			</div>
+			<Dropdown
+				items={themeItems}
+				value={currentTheme}
+				onselect={(id) => switchTheme(id)}
+				align="right"
+				label="Theme"
+			>
+				{#snippet trigger({ open, value })}
+					<span class="theme-dropdown-trigger">
+						<span class="trigger-swatch" style="background: {getTheme(value).accent}"></span>
+						<span class="trigger-theme-name">{getTheme(value).name}</span>
+						<svg
+							class="type-dropdown-chevron"
+							class:open
+							width="14"
+							height="14"
+							viewBox="0 0 14 14"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"><path d="M4 6l3 3 3-3" /></svg
+						>
+					</span>
+				{/snippet}
+				{#snippet children({ value, label, selected })}
+					<span
+						class="theme-dropdown-item"
+						class:selected
+						style="background: {getTheme(value).bg}; color: {getTheme(value).fg};"
+					>
+						<span class="swatch-dot" style="background: {getTheme(value).accent}"></span>
+						{label}
+					</span>
+				{/snippet}
+			</Dropdown>
+		</header>
+
 		<!-- Left: Form -->
 		<section class="card-left" aria-labelledby="controls-heading">
 			<h2 id="controls-heading" class="sr-only">QR controls</h2>
-			<header class="card-left-header">
-				<div class="header-left" id="app-subtitle">
-					<span class="logo">QR</span>
-					<span class="logo-domain">.mia.cx</span>
-				</div>
-				<Dropdown
-					items={themeItems}
-					value={themeStore.get()}
-					onselect={(id) => switchTheme(id)}
-					align="right"
-					label="Theme"
-				>
-					{#snippet trigger({ open, value })}
-						<span class="theme-dropdown-trigger">
-							<span class="trigger-swatch" style="background: {getTheme(value).accent}"></span>
-							<span class="trigger-theme-name">{getTheme(value).name}</span>
-							<svg
-								class="type-dropdown-chevron"
-								class:open
-								width="14"
-								height="14"
-								viewBox="0 0 14 14"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.5"><path d="M4 6l3 3 3-3" /></svg
-							>
-						</span>
-					{/snippet}
-					{#snippet children({ value, label, selected })}
-						<span
-							class="theme-dropdown-item"
-							class:selected
-							style="background: {getTheme(value).bg}; color: {getTheme(value).fg};"
-						>
-							<span class="swatch-dot" style="background: {getTheme(value).accent}"></span>
-							{label}
-						</span>
-					{/snippet}
-				</Dropdown>
-			</header>
 
 			<!-- Accordion: Generate -->
 			<h3 class="accordion-heading">
@@ -475,7 +499,7 @@
 					onclick={() => (activeSection = 'generate')}
 				>
 					<span class="accordion-title" class:large={activeSection === 'generate'}
-						>Generate a QR code</span
+						>Create a QR code</span
 					>
 					<svg
 						class="accordion-chevron"
@@ -551,15 +575,24 @@
 										value={qrState.payloads.wifi.ssid}
 										oninput={(e) => qrState.setPayloadField('wifi', 'ssid', e.currentTarget.value)}
 									/>
-									<input
-										class="input"
-										type="password"
-										aria-label="Wi-Fi password"
-										placeholder="Password"
-										value={qrState.payloads.wifi.password}
-										oninput={(e) =>
-											qrState.setPayloadField('wifi', 'password', e.currentTarget.value)}
-									/>
+									<div class="password-input-wrapper">
+										<input
+											class="input password-input"
+											type={showWifiPassword ? 'text' : 'password'}
+											aria-label="Wi-Fi password"
+											placeholder="Password"
+											value={qrState.payloads.wifi.password}
+											oninput={(e) =>
+												qrState.setPayloadField('wifi', 'password', e.currentTarget.value)}
+										/>
+										<button type="button" class="password-eye" aria-label={showWifiPassword ? 'Hide password' : 'Show password'} onclick={() => showWifiPassword = !showWifiPassword}>
+											{#if showWifiPassword}
+												<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z"/><circle cx="8" cy="8" r="2"/></svg>
+											{:else}
+												<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z"/><circle cx="8" cy="8" r="2"/><path d="M3 13L13 3"/></svg>
+											{/if}
+										</button>
+									</div>
 									<div class="inline-options">
 										<span class="field-label" id="wifi-encryption-label">Encryption</span>
 										<div
@@ -905,6 +938,7 @@
 						<h4 id="reader-upload-title" class="drop-text">Drag & drop an image here</h4>
 						<div class="browse-capture-row">
 							<label class="browse-btn">
+								<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13V4a1 1 0 011-1h3l2 2h5a1 1 0 011 1v7a1 1 0 01-1 1H3a1 1 0 01-1-1z"/></svg>
 								Browse
 								<input
 									type="file"
@@ -914,18 +948,6 @@
 									onchange={handleFileSelect}
 								/>
 							</label>
-							<span class="drop-hint">or</span>
-							<button
-								type="button"
-								class="browse-btn"
-								aria-label="Paste a QR image from the clipboard"
-								onclick={(e) => {
-									e.stopPropagation();
-									void handlePasteButton();
-								}}
-							>
-								Paste
-							</button>
 							<span class="drop-hint">or</span>
 							<div class="capture-row">
 								<button
@@ -1004,7 +1026,7 @@
 							</div>
 						</div>
 						<p id="reader-upload-help" class="drop-hint">
-							Paste from clipboard with <kbd>Cmd+V</kbd> or use Paste
+							Paste from clipboard with <kbd>Cmd+V</kbd>
 						</p>
 					</section>
 
@@ -1032,41 +1054,7 @@
 
 					<!-- Result -->
 					{#if readerResult}
-						<section class="reader-result" aria-labelledby="reader-result-title" aria-live="polite">
-							<h4 id="reader-result-title" class="field-label">Result</h4>
-							<pre class="result-text">{readerResult}</pre>
-							<div class="reader-result-actions">
-								<button
-									type="button"
-									class="copy-btn"
-									onclick={() => navigator.clipboard.writeText(readerResult)}
-								>
-									<svg
-										width="14"
-										height="14"
-										viewBox="0 0 14 14"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.5"
-										><rect x="4" y="4" width="8" height="8" /><path
-											d="M4 10H3a1 1 0 01-1-1V3a1 1 0 011-1h6a1 1 0 011 1v1"
-										/></svg
-									>
-									Copy
-								</button>
-								<button type="button" class="copy-btn" onclick={loadResultIntoGenerator}>
-									<svg
-										width="14"
-										height="14"
-										viewBox="0 0 14 14"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="1.5"><path d="M2 7h10M8 3l4 4-4 4" /></svg
-									>
-									Use as input
-								</button>
-							</div>
-						</section>
+						<ReaderResult raw={readerResult} onuse={loadResultIntoGenerator} />
 					{/if}
 
 					{#if readerError}
@@ -1080,13 +1068,10 @@
 		<aside class="card-right" aria-labelledby="preview-heading">
 			<h2 id="preview-heading" class="sr-only">QR preview and export options</h2>
 			<p class="sr-only" aria-live="polite">{previewStatusText}</p>
-			{#if svgOutput}
-				<div class="preview-qr" aria-hidden="true">
-					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-					{@html svgOutput}
-				</div>
-			{:else}
-				<div class="preview-empty" aria-hidden="true">
+			<div class="preview-area" aria-hidden="true">
+				{#if previewSrc}
+					<img src={previewSrc} alt="QR code preview" class="preview-img" />
+				{:else}
 					<svg
 						width="64"
 						height="64"
@@ -1102,8 +1087,8 @@
 						<rect x="11" y="11" width="2" height="2" />
 						<rect x="15" y="15" width="7" height="7" />
 					</svg>
-				</div>
-			{/if}
+				{/if}
+			</div>
 
 			<div class="card-right-footer">
 				<div class="settings-section">
@@ -1128,7 +1113,7 @@
 										<span class="ratio-item">{label}</span>
 									{/snippet}
 								</Dropdown>
-								<span class="ratio-suffix">:1</span>
+								<span class="ratio-suffix">&nbsp;:&nbsp;1</span>
 							</div>
 						</div>
 
@@ -1230,6 +1215,7 @@
 	.card {
 		display: grid;
 		grid-template-columns: 1fr 1fr;
+		grid-template-rows: auto 1fr;
 		width: 100%;
 		max-width: 900px;
 		height: 720px;
@@ -1238,21 +1224,23 @@
 		transition: border-color 0.3s ease;
 	}
 
+	.card-header {
+		grid-column: 1 / -1;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 1.25rem 2rem;
+		border-bottom: 1px solid var(--border);
+	}
+
 	/* Left panel */
 	.card-left {
-		padding: 2rem;
+		padding: 1.5rem 2rem;
 		display: flex;
 		flex-direction: column;
 		gap: 0;
 		overflow: hidden;
 		min-height: 0;
-	}
-
-	.card-left-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 1.5rem;
 	}
 
 	.header-left {
@@ -1262,14 +1250,14 @@
 	}
 
 	.logo {
-		font-family: 'JetBrains Mono', monospace;
-		font-weight: 800;
+		font-family: 'Oxanium', sans-serif;
+		font-weight: 700;
 		font-size: 1.25rem;
 		color: var(--foreground);
 	}
 
 	.logo-domain {
-		font-family: 'JetBrains Mono', monospace;
+		font-family: 'Oxanium', sans-serif;
 		font-size: 0.75rem;
 		color: var(--muted-foreground);
 	}
@@ -1352,6 +1340,10 @@
 		transition: border-color 0.3s ease;
 	}
 
+	.accordion-heading:first-of-type .accordion-trigger {
+		border-top: none;
+	}
+
 	.accordion-trigger:focus-visible,
 	.toggle-item:focus-visible,
 	.custom-checkbox:focus-visible,
@@ -1360,13 +1352,13 @@
 	.browse-btn:focus-visible,
 	.capture-btn:focus-visible,
 	.capture-menu-item:focus-visible,
-	.stop-capture-btn:focus-visible,
-	.copy-btn:focus-visible {
+	.stop-capture-btn:focus-visible {
 		outline: 2px solid var(--ring);
 		outline-offset: 2px;
 	}
 
 	.accordion-title {
+		font-family: 'Oxanium', sans-serif;
 		font-size: 0.85rem;
 		font-weight: 500;
 		color: var(--muted-foreground);
@@ -1486,6 +1478,31 @@
 
 	.input::placeholder {
 		color: var(--muted-foreground);
+	}
+
+	.password-input-wrapper {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+
+	.password-input {
+		padding-right: 2.5rem;
+	}
+
+	.password-eye {
+		position: absolute;
+		right: 0.5rem;
+		all: unset;
+		cursor: pointer;
+		color: var(--muted-foreground);
+		display: flex;
+		align-items: center;
+		padding: 0.25rem;
+	}
+
+	.password-eye:hover {
+		color: var(--foreground);
 	}
 
 	.textarea {
@@ -1654,8 +1671,12 @@
 	}
 
 	.ratio-item {
-		display: block;
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
 		width: 100%;
+		height: 100%;
+		padding: 0 0.75rem;
 		text-align: right;
 	}
 
@@ -1750,25 +1771,26 @@
 			border-color 0.3s ease;
 	}
 
-	.preview-qr,
-	.preview-empty {
+	.preview-area {
 		flex: 1;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		min-height: 0;
+		overflow: hidden;
 	}
 
-	.preview-qr :global(svg) {
-		max-width: 100%;
-		max-height: 100%;
-		height: auto;
+	.preview-img {
+		image-rendering: pixelated;
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
 	}
 
 	.card-right-footer {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: 1.25rem;
 		padding-top: 0.75rem;
 		border-top: 1px solid var(--border);
 		margin-top: 0.75rem;
@@ -1817,7 +1839,7 @@
 	.drop-hint kbd {
 		padding: 0.125rem 0.375rem;
 		border: 1px solid var(--border);
-		font-family: 'JetBrains Mono', monospace;
+		font-family: 'DM Sans Variable', monospace;
 		font-size: 0.65rem;
 		background: var(--secondary);
 	}
@@ -1825,7 +1847,8 @@
 	.browse-btn {
 		display: inline-flex;
 		align-items: center;
-		padding: 0.375rem 0.75rem;
+		gap: 0.375rem;
+		padding: 0.5rem 0.75rem;
 		border: 1px solid var(--border);
 		background: var(--secondary);
 		color: var(--foreground);
@@ -1962,48 +1985,6 @@
 		font-size: 0.75rem;
 		cursor: pointer;
 		margin-left: auto;
-	}
-
-	/* Reader result */
-	.reader-result {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-	}
-
-	.reader-result-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-	}
-
-	.result-text {
-		padding: 0.625rem;
-		background: var(--secondary);
-		border: 1px solid var(--border);
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 0.8rem;
-		color: var(--foreground);
-		white-space: pre-wrap;
-		word-break: break-all;
-		overflow-x: auto;
-	}
-
-	.copy-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.375rem;
-		align-self: flex-start;
-		padding: 0.375rem 0.625rem;
-		background: var(--secondary);
-		border: 1px solid var(--border);
-		color: var(--foreground);
-		font-size: 0.75rem;
-		cursor: pointer;
-	}
-
-	.copy-btn:hover {
-		background: var(--accent);
 	}
 
 	.reader-error {

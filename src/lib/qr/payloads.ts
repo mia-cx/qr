@@ -80,6 +80,136 @@ export const defaultPayloads: PayloadFields = {
 	mecard: { name: '', phone: '', email: '', url: '', address: '', note: '' }
 };
 
+export function decodePayload(raw: string): { type: PayloadType; fields: PayloadFields[PayloadType] } {
+	// WiFi
+	if (raw.startsWith('WIFI:')) {
+		const get = (key: string) => {
+			const m = raw.match(new RegExp(`${key}:([^;]*)`));
+			return m?.[1]?.replace(/\\(.)/g, '$1') ?? '';
+		};
+		return {
+			type: 'wifi',
+			fields: {
+				ssid: get('S'),
+				password: get('P'),
+				encryption: (get('T') || 'WPA') as 'WPA' | 'WEP' | 'nopass',
+				hidden: get('H') === 'true'
+			}
+		};
+	}
+
+	// vCard
+	if (raw.startsWith('BEGIN:VCARD')) {
+		const line = (key: string) => {
+			const m = raw.match(new RegExp(`^${key}:(.*)$`, 'm'));
+			return m?.[1]?.replace(/\\(.)/g, '$1') ?? '';
+		};
+		const n = line('N').split(';');
+		return {
+			type: 'vcard',
+			fields: {
+				lastName: n[0] ?? '',
+				firstName: n[1] ?? '',
+				phone: line('TEL'),
+				email: line('EMAIL'),
+				org: line('ORG'),
+				title: line('TITLE'),
+				url: line('URL'),
+				address: line('ADR').replace(/^;;/, '').replace(/;+$/, '')
+			}
+		};
+	}
+
+	// Calendar
+	if (raw.startsWith('BEGIN:VCALENDAR')) {
+		const line = (key: string) => {
+			const m = raw.match(new RegExp(`^${key}:(.*)$`, 'm'));
+			return m?.[1] ?? '';
+		};
+		const parseDt = (dt: string) => {
+			// 20260421T0000 -> 2026-04-21T00:00
+			const d = dt.replace(/(\d{4})(\d{2})(\d{2})T?(\d{2})?(\d{2})?/, (_, y, mo, day, h, mi) =>
+				`${y}-${mo}-${day}T${h ?? '00'}:${mi ?? '00'}`
+			);
+			return d;
+		};
+		return {
+			type: 'calendar',
+			fields: {
+				title: line('SUMMARY'),
+				location: line('LOCATION'),
+				description: line('DESCRIPTION'),
+				start: parseDt(line('DTSTART')),
+				end: parseDt(line('DTEND'))
+			}
+		};
+	}
+
+	// MeCard
+	if (raw.startsWith('MECARD:')) {
+		const get = (key: string) => {
+			const m = raw.match(new RegExp(`${key}:([^;]*)`));
+			return m?.[1] ?? '';
+		};
+		return {
+			type: 'mecard',
+			fields: {
+				name: get('N'),
+				phone: get('TEL'),
+				email: get('EMAIL'),
+				url: get('URL'),
+				address: get('ADR'),
+				note: get('NOTE')
+			}
+		};
+	}
+
+	// Geo
+	if (raw.startsWith('geo:')) {
+		const coords = raw.slice(4).split(',');
+		return {
+			type: 'geo',
+			fields: { latitude: coords[0] ?? '', longitude: coords[1] ?? '' }
+		};
+	}
+
+	// Phone
+	if (raw.startsWith('tel:')) {
+		return { type: 'phone', fields: { number: raw.slice(4) } };
+	}
+
+	// SMS
+	if (raw.startsWith('smsto:')) {
+		const parts = raw.slice(6).split(':');
+		return {
+			type: 'sms',
+			fields: { number: parts[0] ?? '', message: parts.slice(1).join(':') }
+		};
+	}
+
+	// Email
+	if (raw.startsWith('mailto:')) {
+		const [to, query] = raw.slice(7).split('?');
+		const params = new URLSearchParams(query ?? '');
+		return {
+			type: 'email',
+			fields: {
+				to: to ?? '',
+				subject: params.get('subject') ?? '',
+				body: params.get('body') ?? ''
+			}
+		};
+	}
+
+	// URL
+	if (/^https?:\/\//i.test(raw) || raw.startsWith('www.')) {
+		return { type: 'url', fields: { url: raw } };
+	}
+
+	// Fallback: plain text
+	return { type: 'text', fields: { text: raw } };
+}
+
 function escapeWifi(s: string): string {
 	return s.replace(/([\\;,:"'])/g, '\\$1');
 }
