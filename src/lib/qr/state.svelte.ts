@@ -45,7 +45,7 @@ class QRState {
 	get snapshot(): QRDraftSnapshot {
 		return {
 			payloadType: this.payloadType,
-			payloads: structuredClone(this.payloads),
+			payloads: $state.snapshot(this.payloads),
 			errorCorrection: this.errorCorrection,
 			pixelSize: this.pixelSize,
 			moduleStyle: this.moduleStyle,
@@ -84,7 +84,7 @@ class QRState {
 
 	replacePayload<T extends PayloadType>(type: T, fields: PayloadFields[T]) {
 		this.payloadType = type;
-		this.payloads[type] = structuredClone(fields) as PayloadFields[T];
+		this.payloads[type] = $state.snapshot(fields) as PayloadFields[T];
 		this.persist();
 	}
 
