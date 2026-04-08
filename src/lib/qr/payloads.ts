@@ -166,7 +166,7 @@ export function decodePayload(raw: string): { type: PayloadType; fields: Payload
 
 	// Geo
 	if (raw.startsWith('geo:')) {
-		const coords = raw.slice(4).split(',');
+		const coords = raw.slice(4).split('?')[0].split(',');
 		return {
 			type: 'geo',
 			fields: { latitude: coords[0] ?? '', longitude: coords[1] ?? '' }
@@ -223,7 +223,9 @@ function escapeICalendarText(s: string): string {
 }
 
 function formatCalendarDateTime(value: string): string {
-	return value.replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+	let result = value.replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+	if (/T\d{4}$/.test(result)) result += '00';
+	return result;
 }
 
 export function encodeVcardPayload(fields: PayloadFields['vcard']): string {
