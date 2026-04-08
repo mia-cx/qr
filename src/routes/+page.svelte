@@ -88,8 +88,9 @@
 	$effect(() => {
 		if (previewOptions) {
 			const c = document.createElement('canvas');
-			generateQRCanvas(c, previewOptions);
-			previewSrc = c.toDataURL('image/png');
+			generateQRCanvas(c, previewOptions).then(() => {
+				previewSrc = c.toDataURL('image/png');
+			});
 		} else {
 			previewSrc = '';
 		}
@@ -212,7 +213,7 @@
 	});
 
 	// --- Export ---
-	function exportAs(fmt: 'svg' | 'png' | 'jpg') {
+	async function exportAs(fmt: 'svg' | 'png' | 'jpg') {
 		if (!svgOutput) return;
 		const qrOptions = getCurrentQrOptions();
 
@@ -221,7 +222,7 @@
 			download(blob, 'qr.svg');
 		} else {
 			if (!exportCanvas) return;
-			generateQRCanvas(exportCanvas, qrOptions);
+			await generateQRCanvas(exportCanvas, qrOptions);
 			const mimeType = fmt === 'png' ? 'image/png' : 'image/jpeg';
 			exportCanvas.toBlob(
 				(blob) => {

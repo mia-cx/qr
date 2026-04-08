@@ -107,7 +107,7 @@ function escapeXml(s: string): string {
 		.replace(/"/g, '&quot;');
 }
 
-export function generateQRCanvas(canvas: HTMLCanvasElement, options: QROptions): void {
+export async function generateQRCanvas(canvas: HTMLCanvasElement, options: QROptions): Promise<void> {
 	if (!options.data) return;
 
 	const modules = generateQRModules(options.data, options.errorCorrection);
@@ -150,6 +150,10 @@ export function generateQRCanvas(canvas: HTMLCanvasElement, options: QROptions):
 
 		const img = new Image();
 		img.src = options.logo;
+		await new Promise<void>((resolve, reject) => {
+			img.onload = () => resolve();
+			img.onerror = () => reject(new Error('Failed to load logo'));
+		});
 		ctx.drawImage(img, logoX, logoY, logoSize, logoSize);
 	}
 

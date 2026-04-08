@@ -4,6 +4,10 @@
 		encodeCalendarPayload,
 		encodeVcardPayload,
 		getSafeExternalHref,
+		getSafePhoneHref,
+		getSafeSmsHref,
+		getSafeMailtoHref,
+		getSafeGeoHref,
 		normalizeLineEndingsForFile,
 		payloadLabels,
 		type PayloadType,
@@ -103,12 +107,22 @@
 
 		{:else if type === 'phone'}
 			{@const f = fields as PayloadFields['phone']}
-			<a href="tel:{f.number}" class="result-link">{f.number}</a>
+			{@const phoneHref = getSafePhoneHref(f.number)}
+			{#if phoneHref}
+				<a href={phoneHref} class="result-link">{f.number}</a>
+			{:else}
+				<span class="result-field-value">{f.number}</span>
+			{/if}
 
 		{:else if type === 'sms'}
 			{@const f = fields as PayloadFields['sms']}
+			{@const smsHref = getSafeSmsHref(f.number)}
 			<div class="result-fields">
-				<a href="sms:{f.number}" class="result-link">{f.number}</a>
+				{#if smsHref}
+					<a href={smsHref} class="result-link">{f.number}</a>
+				{:else}
+					<span class="result-field-value">{f.number}</span>
+				{/if}
 				{#if f.message}
 					<pre class="result-text">{f.message}</pre>
 				{/if}
@@ -116,8 +130,13 @@
 
 		{:else if type === 'email'}
 			{@const f = fields as PayloadFields['email']}
+			{@const mailHref = getSafeMailtoHref(f.to)}
 			<div class="result-fields">
-				<a href="mailto:{f.to}" class="result-link">{f.to}</a>
+				{#if mailHref}
+					<a href={mailHref} class="result-link">{f.to}</a>
+				{:else}
+					<span class="result-field-value">{f.to}</span>
+				{/if}
 				{#if f.subject}
 					<div class="result-field">
 						<span class="result-field-label">Subject</span>
@@ -136,8 +155,22 @@
 				{#if f.title || f.org}
 					<span class="result-field-muted">{[f.title, f.org].filter(Boolean).join(' at ')}</span>
 				{/if}
-				{#if f.phone}<a href="tel:{f.phone}" class="result-link">{f.phone}</a>{/if}
-				{#if f.email}<a href="mailto:{f.email}" class="result-link">{f.email}</a>{/if}
+				{#if f.phone}
+					{@const vcardPhoneHref = getSafePhoneHref(f.phone)}
+					{#if vcardPhoneHref}
+						<a href={vcardPhoneHref} class="result-link">{f.phone}</a>
+					{:else}
+						<span class="result-field-value">{f.phone}</span>
+					{/if}
+				{/if}
+				{#if f.email}
+					{@const vcardMailHref = getSafeMailtoHref(f.email)}
+					{#if vcardMailHref}
+						<a href={vcardMailHref} class="result-link">{f.email}</a>
+					{:else}
+						<span class="result-field-value">{f.email}</span>
+					{/if}
+				{/if}
 				{#if f.url}
 					{@const safeHref = getSafeExternalHref(f.url)}
 					{#if safeHref}
@@ -165,14 +198,33 @@
 
 		{:else if type === 'geo'}
 			{@const f = fields as PayloadFields['geo']}
-			<a href="geo:{f.latitude},{f.longitude}" class="result-link">{f.latitude}, {f.longitude}</a>
+			{@const geoHref = getSafeGeoHref(f.latitude, f.longitude)}
+			{#if geoHref}
+				<a href={geoHref} class="result-link">{f.latitude}, {f.longitude}</a>
+			{:else}
+				<span class="result-field-value">{f.latitude}, {f.longitude}</span>
+			{/if}
 
 		{:else if type === 'mecard'}
 			{@const f = fields as PayloadFields['mecard']}
 			<div class="result-fields">
 				<span class="result-field-value contact-name">{f.name}</span>
-				{#if f.phone}<a href="tel:{f.phone}" class="result-link">{f.phone}</a>{/if}
-				{#if f.email}<a href="mailto:{f.email}" class="result-link">{f.email}</a>{/if}
+				{#if f.phone}
+					{@const mecardPhoneHref = getSafePhoneHref(f.phone)}
+					{#if mecardPhoneHref}
+						<a href={mecardPhoneHref} class="result-link">{f.phone}</a>
+					{:else}
+						<span class="result-field-value">{f.phone}</span>
+					{/if}
+				{/if}
+				{#if f.email}
+					{@const mecardMailHref = getSafeMailtoHref(f.email)}
+					{#if mecardMailHref}
+						<a href={mecardMailHref} class="result-link">{f.email}</a>
+					{:else}
+						<span class="result-field-value">{f.email}</span>
+					{/if}
+				{/if}
 				{#if f.url}
 					{@const safeHref = getSafeExternalHref(f.url)}
 					{#if safeHref}

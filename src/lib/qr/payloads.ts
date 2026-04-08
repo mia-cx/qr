@@ -84,7 +84,7 @@ export function decodePayload(raw: string): { type: PayloadType; fields: Payload
 	// WiFi
 	if (raw.startsWith('WIFI:')) {
 		const get = (key: string) => {
-			const m = raw.match(new RegExp(`${key}:([^;]*)`));
+			const m = raw.match(new RegExp(`${key}:((?:[^\\\\;]|\\\\.)*)`));
 			return m?.[1]?.replace(/\\(.)/g, '$1') ?? '';
 		};
 		return {
@@ -272,6 +272,28 @@ export function getSafeExternalHref(value: string): string | null {
 	} catch {
 		return null;
 	}
+}
+
+const PHONE_RE = /^[\d+\s()\-.*#]+$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+$/;
+const GEO_RE = /^-?\d+(\.\d+)?$/;
+
+export function getSafePhoneHref(value: string): string | null {
+	return PHONE_RE.test(value.trim()) ? `tel:${value.trim()}` : null;
+}
+
+export function getSafeSmsHref(value: string): string | null {
+	return PHONE_RE.test(value.trim()) ? `sms:${value.trim()}` : null;
+}
+
+export function getSafeMailtoHref(value: string): string | null {
+	return EMAIL_RE.test(value.trim()) ? `mailto:${value.trim()}` : null;
+}
+
+export function getSafeGeoHref(lat: string, lon: string): string | null {
+	return GEO_RE.test(lat.trim()) && GEO_RE.test(lon.trim())
+		? `geo:${lat.trim()},${lon.trim()}`
+		: null;
 }
 
 export function encodePayload(type: PayloadType, fields: PayloadFields[typeof type]): string {
