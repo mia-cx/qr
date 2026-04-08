@@ -1375,6 +1375,7 @@
 	}
 
 	.trigger-theme-name {
+		flex: 1;
 		font-weight: 500;
 		white-space: nowrap;
 	}
@@ -2096,6 +2097,14 @@
 		.card-left {
 			max-height: none;
 			padding: 1.5rem;
+		}
+
+		.accordion-panel.open {
+			flex: 0 0 auto;
+		}
+
+		.generate-form {
+			flex: 0 0 auto;
 		}
 	}
 </style>
