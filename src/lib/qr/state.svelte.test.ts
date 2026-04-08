@@ -88,4 +88,29 @@ describe('qrState', () => {
 			}
 		});
 	});
+
+	it('keeps in-memory edits working when persistent writes fail', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+		const [{ createQrDraftStore }, { createQrState }] = await Promise.all([
+			import('./persistence'),
+			import('./state.svelte')
+		]);
+
+		const store = createQrDraftStore('qr-draft-failing');
+		vi.spyOn(store, 'set').mockImplementation(() => {
+			throw new Error('quota exceeded');
+		});
+
+		const qrState = createQrState(store);
+
+		expect(() => {
+			qrState.setPayloadType('phone');
+			qrState.setPayloadField('phone', 'number', '+31 6 9876 5432');
+		}).not.toThrow();
+
+		expect(qrState.payloadType).toBe('phone');
+		expect(qrState.payloads.phone.number).toBe('+31 6 9876 5432');
+		expect(storage['qr-draft-failing']).toBeUndefined();
+		expect(warn).toHaveBeenCalledWith('Failed to persist QR draft', expect.any(Error));
+	});
 });

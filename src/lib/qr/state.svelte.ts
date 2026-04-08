@@ -85,7 +85,13 @@ export class QRState {
 	private persist() {
 		this.isWritingToStore = true;
 		try {
-			this.store.set(this.snapshot);
+			try {
+				this.store.set(this.snapshot);
+			} catch (error) {
+				// Persisting the draft is best-effort. Editing should still work
+				// even if storage is unavailable or quota-limited.
+				console.warn('Failed to persist QR draft', error);
+			}
 		} finally {
 			this.isWritingToStore = false;
 		}
