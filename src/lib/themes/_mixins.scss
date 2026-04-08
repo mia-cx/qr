@@ -1,0 +1,50 @@
+@mixin theme-vars(
+	$bg,
+	$bg-secondary,
+	$bg-tertiary,
+	$fg,
+	$fg-secondary,
+	$fg-muted,
+	$accent,
+	$accent-fg,
+	$border,
+	$border-focus,
+	$qr-fg,
+	$qr-bg,
+	$error,
+	$success
+) {
+	--c-bg: #{$bg};
+	--c-bg-secondary: #{$bg-secondary};
+	--c-bg-tertiary: #{$bg-tertiary};
+	--c-fg: #{$fg};
+	--c-fg-secondary: #{$fg-secondary};
+	--c-fg-muted: #{$fg-muted};
+	--c-accent: #{$accent};
+	--c-accent-fg: #{$accent-fg};
+	--c-border: #{$border};
+	--c-border-focus: #{$border-focus};
+	--c-qr-fg: #{$qr-fg};
+	--c-qr-bg: #{$qr-bg};
+	--c-error: #{$error};
+	--c-success: #{$success};
+
+	--background: #{$bg};
+	--foreground: #{$fg};
+	--card: #{$bg-secondary};
+	--card-foreground: #{$fg};
+	--popover: #{$bg-secondary};
+	--popover-foreground: #{$fg};
+	--primary: #{$accent};
+	--primary-foreground: #{$accent-fg};
+	--secondary: #{$bg-secondary};
+	--secondary-foreground: #{$fg};
+	--muted: #{$bg-tertiary};
+	--muted-foreground: #{$fg-muted};
+	--accent: #{$bg-tertiary};
+	--accent-foreground: #{$fg};
+	--border: #{$border};
+	--input: #{$border};
+	--ring: #{$border-focus};
+	--destructive: #{$error};
+}

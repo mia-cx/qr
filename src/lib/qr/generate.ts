@@ -20,8 +20,7 @@ interface QRModules {
 }
 
 function generateQRModules(data: string, errorCorrection: ErrorCorrectionLevel): QRModules {
-	const ecMap = { L: 1, M: 0, Q: 3, H: 2 } as const;
-	const qr = qrcode(0, ecMap[errorCorrection] as 0 | 1 | 2 | 3);
+	const qr = qrcode(0, errorCorrection);
 	qr.addData(data);
 	qr.make();
 	return {
@@ -42,44 +41,42 @@ export function generateQRSvg(options: QROptions): string {
 	const width = qrSize + margin * 2;
 	const height = qrSize + margin * 2 + frameHeight;
 
+	const safeFg = escapeXml(options.fgColor);
+	const safeBg = escapeXml(options.bgColor);
+
 	let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">`;
-	svg += `<rect width="${width}" height="${height}" fill="${options.bgColor}"/>`;
+	svg += `<rect width="${width}" height="${height}" fill="${safeBg}"/>`;
 
 	for (let row = 0; row < count; row++) {
 		for (let col = 0; col < count; col++) {
 			if (modules.isDark(row, col)) {
 				const x = margin + col * px;
 				const y = margin + row * px;
-				svg += drawModule(x, y, px, options.moduleStyle, options.fgColor);
+				svg += drawModule(x, y, px, options.moduleStyle, safeFg);
 			}
 		}
 	}
 
 	if (options.logo) {
+		const safeLogo = escapeXml(options.logo);
 		const logoSize = qrSize * 0.25;
 		const logoX = margin + (qrSize - logoSize) / 2;
 		const logoY = margin + (qrSize - logoSize) / 2;
 		const logoPad = px;
-		svg += `<rect x="${logoX - logoPad}" y="${logoY - logoPad}" width="${logoSize + logoPad * 2}" height="${logoSize + logoPad * 2}" fill="${options.bgColor}" rx="${px}"/>`;
-		svg += `<image x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}" href="${options.logo}" preserveAspectRatio="xMidYMid meet"/>`;
+		svg += `<rect x="${logoX - logoPad}" y="${logoY - logoPad}" width="${logoSize + logoPad * 2}" height="${logoSize + logoPad * 2}" fill="${safeBg}" rx="${px}"/>`;
+		svg += `<image x="${logoX}" y="${logoY}" width="${logoSize}" height="${logoSize}" href="${safeLogo}" preserveAspectRatio="xMidYMid meet"/>`;
 	}
 
 	if (options.frameText) {
 		const textY = margin + qrSize + frameHeight * 0.7;
-		svg += `<text x="${width / 2}" y="${textY}" text-anchor="middle" font-family="sans-serif" font-size="${px * 2.5}" font-weight="bold" fill="${options.fgColor}">${escapeXml(options.frameText)}</text>`;
+		svg += `<text x="${width / 2}" y="${textY}" text-anchor="middle" font-family="sans-serif" font-size="${px * 2.5}" font-weight="bold" fill="${safeFg}">${escapeXml(options.frameText)}</text>`;
 	}
 
 	svg += '</svg>';
 	return svg;
 }
 
-function drawModule(
-	x: number,
-	y: number,
-	size: number,
-	style: ModuleStyle,
-	color: string
-): string {
+function drawModule(x: number, y: number, size: number, style: ModuleStyle, color: string): string {
 	switch (style) {
 		case 'square':
 			return `<rect x="${x}" y="${y}" width="${size}" height="${size}" fill="${color}"/>`;
@@ -103,13 +100,14 @@ function drawModule(
 }
 
 function escapeXml(s: string): string {
-	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+	return s
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
 }
 
-export function generateQRCanvas(
-	canvas: HTMLCanvasElement,
-	options: QROptions
-): void {
+export async function generateQRCanvas(canvas: HTMLCanvasElement, options: QROptions): Promise<void> {
 	if (!options.data) return;
 
 	const modules = generateQRModules(options.data, options.errorCorrection);
@@ -137,6 +135,26 @@ export function generateQRCanvas(
 				drawModuleCanvas(ctx, x, y, px, options.moduleStyle, options.fgColor);
 			}
 		}
+	}
+
+	if (options.logo) {
+		const logoSize = qrSize * 0.25;
+		const logoX = margin + (qrSize - logoSize) / 2;
+		const logoY = margin + (qrSize - logoSize) / 2;
+		const logoPad = px;
+
+		ctx.fillStyle = options.bgColor;
+		ctx.beginPath();
+		ctx.roundRect(logoX - logoPad, logoY - logoPad, logoSize + logoPad * 2, logoSize + logoPad * 2, px);
+		ctx.fill();
+
+		const img = new Image();
+		img.src = options.logo;
+		await new Promise<void>((resolve, reject) => {
+			img.onload = () => resolve();
+			img.onerror = () => reject(new Error('Failed to load logo'));
+		});
+		ctx.drawImage(img, logoX, logoY, logoSize, logoSize);
 	}
 
 	if (options.frameText) {

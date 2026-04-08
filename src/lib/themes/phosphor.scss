@@ -1,0 +1,20 @@
+@use 'mixins' as *;
+
+html[data-theme='phosphor'] {
+	@include theme-vars(
+		$bg: #0a0a0a,
+		$bg-secondary: #141414,
+		$bg-tertiary: #1e1e1e,
+		$fg: #33ff33,
+		$fg-secondary: #29cc29,
+		$fg-muted: #1a801a,
+		$accent: #33ff33,
+		$accent-fg: #0a0a0a,
+		$border: #1a331a,
+		$border-focus: #33ff33,
+		$qr-fg: #33ff33,
+		$qr-bg: #0a0a0a,
+		$error: #ff3333,
+		$success: #33ff33
+	);
+}

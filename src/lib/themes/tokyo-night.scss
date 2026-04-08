@@ -1,0 +1,20 @@
+@use 'mixins' as *;
+
+html[data-theme='tokyo-night'] {
+	@include theme-vars(
+		$bg: #1a1b26,
+		$bg-secondary: #24283b,
+		$bg-tertiary: #414868,
+		$fg: #c0caf5,
+		$fg-secondary: #a9b1d6,
+		$fg-muted: #565f89,
+		$accent: #7aa2f7,
+		$accent-fg: #1a1b26,
+		$border: #414868,
+		$border-focus: #7aa2f7,
+		$qr-fg: #c0caf5,
+		$qr-bg: #1a1b26,
+		$error: #f7768e,
+		$success: #9ece6a
+	);
+}

@@ -1,0 +1,20 @@
+@use 'mixins' as *;
+
+html[data-theme='rose-pine'] {
+	@include theme-vars(
+		$bg: #191724,
+		$bg-secondary: #1f1d2e,
+		$bg-tertiary: #26233a,
+		$fg: #e0def4,
+		$fg-secondary: #908caa,
+		$fg-muted: #6e6a86,
+		$accent: #c4a7e7,
+		$accent-fg: #191724,
+		$border: #26233a,
+		$border-focus: #c4a7e7,
+		$qr-fg: #e0def4,
+		$qr-bg: #191724,
+		$error: #eb6f92,
+		$success: #9ccfd8
+	);
+}

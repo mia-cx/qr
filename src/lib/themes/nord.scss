@@ -1,0 +1,20 @@
+@use 'mixins' as *;
+
+html[data-theme='nord'] {
+	@include theme-vars(
+		$bg: #2e3440,
+		$bg-secondary: #3b4252,
+		$bg-tertiary: #434c5e,
+		$fg: #eceff4,
+		$fg-secondary: #e5e9f0,
+		$fg-muted: #4c566a,
+		$accent: #88c0d0,
+		$accent-fg: #2e3440,
+		$border: #434c5e,
+		$border-focus: #88c0d0,
+		$qr-fg: #eceff4,
+		$qr-bg: #2e3440,
+		$error: #bf616a,
+		$success: #a3be8c
+	);
+}

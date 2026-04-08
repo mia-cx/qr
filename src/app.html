@@ -1,6 +1,6 @@
 <!doctype html>
 
-<html lang="%paraglide.lang%" dir="%paraglide.dir%">
+<html lang="%paraglide.lang%" dir="%paraglide.dir%" data-theme="catppuccin-mocha">
 	<head>
 		<meta charset="utf-8" />
 
@@ -8,6 +8,43 @@
 		<meta name="theme-color" content="#1e1e2e" />
 		<link rel="manifest" href="/manifest.json" />
 		<meta name="text-scale" content="scale" />
+		<style>
+			html[data-js='true'][data-app-ready='false'] body {
+				visibility: hidden;
+			}
+		</style>
+		<script>
+			(() => {
+				const root = document.documentElement;
+				const defaultTheme = 'catppuccin-mocha';
+				const themeBackgrounds = {
+					'mono-light': '#ffffff',
+					'mono-dark': '#000000',
+					'catppuccin-latte': '#eff1f5',
+					'catppuccin-mocha': '#1e1e2e',
+					'solarized-light': '#fdf6e3',
+					'solarized-dark': '#002b36',
+					nord: '#2e3440',
+					'rose-pine': '#191724',
+					'gruvbox-dark': '#282828',
+					phosphor: '#0a0a0a',
+					'tokyo-night': '#1a1b26',
+					paper: '#f5f0eb'
+				};
+
+				root.setAttribute('data-js', 'true');
+				root.setAttribute('data-app-ready', 'false');
+
+				try {
+					const storedTheme = localStorage.getItem('theme') ?? defaultTheme;
+					const theme = storedTheme in themeBackgrounds ? storedTheme : defaultTheme;
+					const background = themeBackgrounds[theme];
+					root.setAttribute('data-theme', theme);
+					root.style.background = background;
+					document.querySelector('meta[name="theme-color"]')?.setAttribute('content', background);
+				} catch {}
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 

@@ -1,0 +1,20 @@
+@use 'mixins' as *;
+
+html[data-theme='solarized-light'] {
+	@include theme-vars(
+		$bg: #fdf6e3,
+		$bg-secondary: #eee8d5,
+		$bg-tertiary: #ddd6c1,
+		$fg: #657b83,
+		$fg-secondary: #586e75,
+		$fg-muted: #93a1a1,
+		$accent: #268bd2,
+		$accent-fg: #fdf6e3,
+		$border: #ddd6c1,
+		$border-focus: #268bd2,
+		$qr-fg: #073642,
+		$qr-bg: #fdf6e3,
+		$error: #dc322f,
+		$success: #859900
+	);
+}

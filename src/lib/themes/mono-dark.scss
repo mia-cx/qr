@@ -1,0 +1,20 @@
+@use 'mixins' as *;
+
+html[data-theme='mono-dark'] {
+	@include theme-vars(
+		$bg: #000000,
+		$bg-secondary: #111111,
+		$bg-tertiary: #222222,
+		$fg: #ffffff,
+		$fg-secondary: #cccccc,
+		$fg-muted: #666666,
+		$accent: #ffffff,
+		$accent-fg: #000000,
+		$border: #333333,
+		$border-focus: #ffffff,
+		$qr-fg: #ffffff,
+		$qr-bg: #000000,
+		$error: #ff4444,
+		$success: #44ff44
+	);
+}
