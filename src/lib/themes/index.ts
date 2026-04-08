@@ -49,6 +49,14 @@ export function getTheme(id: string): ThemeMeta {
 	return themes.find((t) => t.id === id) ?? themes.find((t) => t.id === DEFAULT_THEME) ?? themes[0];
 }
 
+export function getInitialThemeId(): string {
+	if (typeof document !== 'undefined') {
+		return getTheme(document.documentElement.getAttribute('data-theme') ?? themeStore.get()).id;
+	}
+
+	return getTheme(themeStore.get()).id;
+}
+
 export function applyDocumentTheme(id: string): void {
 	if (typeof document === 'undefined') return;
 

@@ -8,8 +8,14 @@
 		<meta name="theme-color" content="#1e1e2e" />
 		<link rel="manifest" href="/manifest.json" />
 		<meta name="text-scale" content="scale" />
+		<style>
+			html[data-js='true'][data-app-ready='false'] body {
+				visibility: hidden;
+			}
+		</style>
 		<script>
 			(() => {
+				const root = document.documentElement;
 				const defaultTheme = 'catppuccin-mocha';
 				const themeBackgrounds = {
 					'mono-light': '#ffffff',
@@ -26,12 +32,15 @@
 					paper: '#f5f0eb'
 				};
 
+				root.setAttribute('data-js', 'true');
+				root.setAttribute('data-app-ready', 'false');
+
 				try {
 					const storedTheme = localStorage.getItem('theme') ?? defaultTheme;
 					const theme = storedTheme in themeBackgrounds ? storedTheme : defaultTheme;
 					const background = themeBackgrounds[theme];
-					document.documentElement.setAttribute('data-theme', theme);
-					document.documentElement.style.background = background;
+					root.setAttribute('data-theme', theme);
+					root.style.background = background;
 					document.querySelector('meta[name="theme-color"]')?.setAttribute('content', background);
 				} catch {}
 			})();

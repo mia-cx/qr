@@ -5,6 +5,7 @@
 	import {
 		themes,
 		getTheme,
+		getInitialThemeId,
 		setTheme,
 		getQrColors,
 		themeStore,
@@ -119,10 +120,7 @@
 		}
 
 		// Switch type and sync value to all simple fields so switching back preserves it
-		qrState.payloadType = targetType;
-		qrState.setPayloadField('url', 'url', value);
-		qrState.setPayloadField('text', 'text', value);
-		qrState.setPayloadField('phone', 'number', value);
+		qrState.setAutoDetectedPrimaryValue(targetType, value);
 	}
 
 	function updatePrimaryField(value: string) {
@@ -175,17 +173,29 @@
 	});
 
 	// --- Theme ---
-	let currentTheme = $state(themeStore.get());
+	let currentTheme = $state(getInitialThemeId());
 	const routeSection = $derived(getStudioSectionForPath(deLocalizeUrl(page.url).pathname));
 
-	onMount(() =>
-		themeStore.subscribe((id) => {
+	onMount(() => {
+		const unsubscribeTheme = themeStore.subscribe((id) => {
 			currentTheme = id;
 			applyDocumentTheme(id);
 			const { fg, bg } = getQrColors();
 			qrState.applyThemeColors(fg, bg);
-		})
-	);
+		});
+
+		const revealApp = async () => {
+			try {
+				await document.fonts.ready;
+			} catch {}
+
+			document.documentElement.setAttribute('data-app-ready', 'true');
+		};
+
+		void revealApp();
+
+		return unsubscribeTheme;
+	});
 
 	$effect(() => {
 		if (routeSection) {
@@ -265,8 +275,7 @@
 		if (!readerResult) return;
 
 		const decoded = decodePayload(readerResult);
-		qrState.payloadType = decoded.type;
-		qrState.payloads[decoded.type] = decoded.fields as never;
+		qrState.replacePayload(decoded.type, decoded.fields as never);
 		activeSection = 'generate';
 	}
 
@@ -438,7 +447,7 @@
 
 		e.preventDefault();
 		const direction = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
-		qrState.errorCorrection = moveRadioSelection(errorCorrectionValues, current, direction);
+		qrState.setErrorCorrection(moveRadioSelection(errorCorrectionValues, current, direction));
 	}
 
 	function handleCaptureMenuTriggerKeydown(e: KeyboardEvent) {
@@ -553,7 +562,7 @@
 							value={qrState.payloadType}
 							label="QR content type"
 							onselect={(v) => {
-								qrState.payloadType = v as PayloadType;
+								qrState.setPayloadType(v as PayloadType);
 							}}
 						>
 							{#snippet trigger({ open, value })}
@@ -1163,7 +1172,7 @@
 									value={String(qrState.pixelSize)}
 									label="Pixel ratio"
 									onselect={(v) => {
-										qrState.pixelSize = Number(v);
+										qrState.setPixelSize(Number(v));
 									}}
 								>
 									{#snippet trigger({ value })}
@@ -1191,7 +1200,7 @@
 										aria-checked={qrState.errorCorrection === level.value}
 										onkeydown={(e) => handleErrorCorrectionKeydown(e, level.value)}
 										onclick={() => {
-											qrState.errorCorrection = level.value;
+											qrState.setErrorCorrection(level.value);
 										}}
 									>
 										{level.label} <span class="ec-pct">{level.pct}</span>

@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setPersistentEngine } from '@nanostores/persistent';
 
-import { DEFAULT_THEME, applyDocumentTheme, setTheme, themeStore } from './index';
+import {
+	DEFAULT_THEME,
+	applyDocumentTheme,
+	getInitialThemeId,
+	setTheme,
+	themeStore
+} from './index';
 
 describe('theme helpers', () => {
 	const storage: Record<string, string> = {};
@@ -12,6 +18,13 @@ describe('theme helpers', () => {
 	const documentElement = {
 		dataset: {} as Record<string, string>,
 		style: { background: '' },
+		getAttribute: (name: string) => {
+			if (name === 'data-theme') {
+				return documentElement.dataset.theme;
+			}
+
+			return null;
+		},
 		setAttribute: (name: string, value: string) => {
 			if (name === 'data-theme') {
 				documentElement.dataset.theme = value;
@@ -77,5 +90,11 @@ describe('theme helpers', () => {
 		expect(storage.theme).toBeUndefined();
 		expect(documentElement.dataset.theme).toBe('mono-dark');
 		expect(metaThemeColor.content).toBe('#000000');
+	});
+
+	it('prefers the already-applied document theme during startup', () => {
+		documentElement.dataset.theme = 'paper';
+
+		expect(getInitialThemeId()).toBe('paper');
 	});
 });
