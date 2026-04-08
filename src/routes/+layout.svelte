@@ -8,7 +8,9 @@
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<div class="dark">
 {@render children()}
+</div>
 
 <div style="display:none">
 	{#each locales as locale}
