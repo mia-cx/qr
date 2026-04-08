@@ -17,6 +17,8 @@ export function readQRFromImageData(imageData: ImageData): QRReadResult {
 export async function readQRFromFile(file: File): Promise<QRReadResult> {
 	return new Promise((resolve) => {
 		const img = new Image();
+		const objectUrl = URL.createObjectURL(file);
+
 		img.onload = () => {
 			const canvas = document.createElement('canvas');
 			canvas.width = img.width;
@@ -24,12 +26,14 @@ export async function readQRFromFile(file: File): Promise<QRReadResult> {
 			const ctx = canvas.getContext('2d')!;
 			ctx.drawImage(img, 0, 0);
 			const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+			URL.revokeObjectURL(objectUrl);
 			resolve(readQRFromImageData(imageData));
 		};
 		img.onerror = () => {
+			URL.revokeObjectURL(objectUrl);
 			resolve({ data: '', success: false, error: 'Failed to load image' });
 		};
-		img.src = URL.createObjectURL(file);
+		img.src = objectUrl;
 	});
 }
 

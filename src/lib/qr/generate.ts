@@ -20,8 +20,7 @@ interface QRModules {
 }
 
 function generateQRModules(data: string, errorCorrection: ErrorCorrectionLevel): QRModules {
-	const ecMap = { L: 1, M: 0, Q: 3, H: 2 } as const;
-	const qr = qrcode(0, ecMap[errorCorrection] as 0 | 1 | 2 | 3);
+	const qr = qrcode(0, errorCorrection);
 	qr.addData(data);
 	qr.make();
 	return {
@@ -73,13 +72,7 @@ export function generateQRSvg(options: QROptions): string {
 	return svg;
 }
 
-function drawModule(
-	x: number,
-	y: number,
-	size: number,
-	style: ModuleStyle,
-	color: string
-): string {
+function drawModule(x: number, y: number, size: number, style: ModuleStyle, color: string): string {
 	switch (style) {
 		case 'square':
 			return `<rect x="${x}" y="${y}" width="${size}" height="${size}" fill="${color}"/>`;
@@ -103,13 +96,14 @@ function drawModule(
 }
 
 function escapeXml(s: string): string {
-	return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+	return s
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
 }
 
-export function generateQRCanvas(
-	canvas: HTMLCanvasElement,
-	options: QROptions
-): void {
+export function generateQRCanvas(canvas: HTMLCanvasElement, options: QROptions): void {
 	if (!options.data) return;
 
 	const modules = generateQRModules(options.data, options.errorCorrection);

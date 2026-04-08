@@ -1,0 +1,20 @@
+@use 'mixins' as *;
+
+html[data-theme='gruvbox-dark'] {
+	@include theme-vars(
+		$bg: #282828,
+		$bg-secondary: #3c3836,
+		$bg-tertiary: #504945,
+		$fg: #ebdbb2,
+		$fg-secondary: #d5c4a1,
+		$fg-muted: #665c54,
+		$accent: #fe8019,
+		$accent-fg: #282828,
+		$border: #504945,
+		$border-focus: #fe8019,
+		$qr-fg: #ebdbb2,
+		$qr-bg: #282828,
+		$error: #fb4934,
+		$success: #b8bb26
+	);
+}

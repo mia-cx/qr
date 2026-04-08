@@ -13,8 +13,6 @@ class QRState {
 	logo = $state<string | undefined>(undefined);
 	frameText = $state('');
 
-	themeId = $state('catppuccin-mocha');
-
 	get currentPayload() {
 		return this.payloads[this.payloadType];
 	}
@@ -36,7 +34,11 @@ class QRState {
 		};
 	}
 
-	setPayloadField<T extends PayloadType>(type: T, field: keyof PayloadFields[T], value: string | boolean) {
+	setPayloadField<T extends PayloadType>(
+		type: T,
+		field: keyof PayloadFields[T],
+		value: string | boolean
+	) {
 		(this.payloads[type] as Record<string, string | boolean>)[field as string] = value;
 	}
 

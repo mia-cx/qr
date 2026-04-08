@@ -1,0 +1,20 @@
+@use 'mixins' as *;
+
+html[data-theme='catppuccin-latte'] {
+	@include theme-vars(
+		$bg: #eff1f5,
+		$bg-secondary: #e6e9ef,
+		$bg-tertiary: #dce0e8,
+		$fg: #4c4f69,
+		$fg-secondary: #5c5f77,
+		$fg-muted: #9ca0b0,
+		$accent: #8839ef,
+		$accent-fg: #eff1f5,
+		$border: #ccd0da,
+		$border-focus: #8839ef,
+		$qr-fg: #4c4f69,
+		$qr-bg: #eff1f5,
+		$error: #d20f39,
+		$success: #40a02b
+	);
+}

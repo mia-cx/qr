@@ -1,0 +1,20 @@
+@use 'mixins' as *;
+
+html[data-theme='catppuccin-mocha'] {
+	@include theme-vars(
+		$bg: #1e1e2e,
+		$bg-secondary: #313244,
+		$bg-tertiary: #45475a,
+		$fg: #cdd6f4,
+		$fg-secondary: #bac2de,
+		$fg-muted: #6c7086,
+		$accent: #cba6f7,
+		$accent-fg: #1e1e2e,
+		$border: #45475a,
+		$border-focus: #cba6f7,
+		$qr-fg: #cdd6f4,
+		$qr-bg: #1e1e2e,
+		$error: #f38ba8,
+		$success: #a6e3a1
+	);
+}

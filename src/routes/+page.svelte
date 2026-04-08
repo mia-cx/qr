@@ -1,75 +1,185 @@
 <script lang="ts">
 	import { qrState } from '$lib/qr/state.svelte';
-	import { themes, getTheme, applyTheme } from '$lib/themes';
+	import { themes, getTheme, setTheme, getQrColors, themeStore } from '$lib/themes';
 	import { generateQRSvg, generateQRCanvas } from '$lib/qr/generate';
-	import { readQRFromFile, readQRFromClipboard, readQRFromImageData, createScreenCapture } from '$lib/qr/reader';
+	import {
+		readQRFromFile,
+		readQRFromClipboard,
+		readQRFromImageData,
+		createScreenCapture,
+		type QRReadResult
+	} from '$lib/qr/reader';
 	import { payloadLabels, type PayloadType } from '$lib/qr/payloads';
-	import type { ErrorCorrectionLevel, ModuleStyle } from '$lib/qr/generate';
-	import { onMount } from 'svelte';
+	import type { ErrorCorrectionLevel } from '$lib/qr/generate';
+	import { onDestroy, onMount } from 'svelte';
+	import Dropdown from '$lib/components/Dropdown.svelte';
+	import DateRangePicker from '$lib/components/DateRangePicker.svelte';
 
-	let activeTab = $state<'generate' | 'read'>('generate');
-	let readerResult = $state('');
-	let readerError = $state('');
-	let isCapturing = $state(false);
-	let captureController = $state<{ start: () => Promise<void>; stop: () => void } | null>(null);
-	let fileInputEl: HTMLInputElement;
+	// --- State ---
+	let activeSection = $state<'generate' | 'read'>('generate');
 	let exportCanvas: HTMLCanvasElement;
 
-	const payloadTypes = Object.entries(payloadLabels) as [PayloadType, string][];
-	const errorLevels: { value: ErrorCorrectionLevel; label: string; desc: string }[] = [
-		{ value: 'L', label: 'L', desc: '~7% recovery' },
-		{ value: 'M', label: 'M', desc: '~15% recovery' },
-		{ value: 'Q', label: 'Q', desc: '~25% recovery' },
-		{ value: 'H', label: 'H', desc: '~30% recovery' }
-	];
-	const moduleStyles: { value: ModuleStyle; label: string }[] = [
-		{ value: 'square', label: 'Square' },
-		{ value: 'rounded', label: 'Rounded' },
-		{ value: 'dots', label: 'Dots' },
-		{ value: 'diamond', label: 'Diamond' }
-	];
-	const pixelSizes = [3, 4, 5, 6, 8, 10, 12, 16];
+	// Reader state
+	let readerResult = $state('');
+	let readerError = $state('');
+	let isDragging = $state(false);
+	let isCapturing = $state(false);
+	let captureMode = $state<'webcam' | 'screen' | null>(null);
+	let showCaptureMenu = $state(false);
+	let captureController = $state<{ start: () => Promise<void>; stop: () => void } | null>(null);
+	let webcamStream = $state<MediaStream | null>(null);
+	let webcamVideo = $state<HTMLVideoElement | undefined>(undefined);
+	let webcamScanFrame = $state<number | null>(null);
 
-	const svgOutput = $derived(generateQRSvg(qrState.qrOptions));
+	const payloadTypeItems = (Object.entries(payloadLabels) as [PayloadType, string][]).map(
+		([value, label]) => ({ value, label })
+	);
+	const pixelSizeItems = [1, 2, 3, 4, 6, 8, 10, 16, 32].map((s) => ({
+		value: String(s),
+		label: String(s)
+	}));
+	const ecLevels: { value: ErrorCorrectionLevel; label: string; pct: string }[] = [
+		{ value: 'L', label: 'L', pct: '7%' },
+		{ value: 'M', label: 'M', pct: '15%' },
+		{ value: 'Q', label: 'Q', pct: '25%' },
+		{ value: 'H', label: 'H', pct: '30%' }
+	];
+	const wifiEncryptionValues = ['WPA', 'WEP', 'nopass'] as const;
+	const errorCorrectionValues: ErrorCorrectionLevel[] = ['L', 'M', 'Q', 'H'];
 
+	function getCurrentQrOptions() {
+		return {
+			data: qrState.encodedData,
+			errorCorrection: qrState.errorCorrection,
+			pixelSize: qrState.pixelSize,
+			moduleStyle: qrState.moduleStyle,
+			fgColor: qrState.fgColor,
+			bgColor: qrState.bgColor,
+			logo: qrState.logo,
+			frameText: qrState.frameText
+		};
+	}
+
+	const svgOutput = $derived(qrState.encodedData ? generateQRSvg(getCurrentQrOptions()) : '');
+
+	// --- Auto-detection ---
+	const urlPattern = /^(https?:\/\/|www\.)/i;
+	const phonePattern = /^\+?[\d\s\-().]{7,}$/;
+	const autoDetectTypes: PayloadType[] = ['url', 'text', 'phone'];
+
+	function handlePrimaryInput(value: string) {
+		const currentType = qrState.payloadType;
+
+		// Only auto-switch from auto-detectable types
+		if (!autoDetectTypes.includes(currentType)) {
+			updatePrimaryField(value);
+			return;
+		}
+
+		// Determine the target type
+		let targetType: PayloadType;
+		if (urlPattern.test(value)) {
+			targetType = 'url';
+		} else if (phonePattern.test(value) && value.replace(/\D/g, '').length >= 7) {
+			targetType = 'phone';
+		} else {
+			targetType = 'text';
+		}
+
+		// Switch type and sync value to all simple fields so switching back preserves it
+		qrState.payloadType = targetType;
+		qrState.setPayloadField('url', 'url', value);
+		qrState.setPayloadField('text', 'text', value);
+		qrState.setPayloadField('phone', 'number', value);
+	}
+
+	function updatePrimaryField(value: string) {
+		const t = qrState.payloadType;
+		if (t === 'url') qrState.setPayloadField('url', 'url', value);
+		else if (t === 'text') qrState.setPayloadField('text', 'text', value);
+		else if (t === 'phone') qrState.setPayloadField('phone', 'number', value);
+	}
+
+	function getPrimaryValue(): string {
+		const t = qrState.payloadType;
+		if (t === 'url') return qrState.payloads.url.url;
+		if (t === 'text') return qrState.payloads.text.text;
+		if (t === 'phone') return qrState.payloads.phone.number;
+		return '';
+	}
+
+	function getPrimaryPlaceholder(): string {
+		const t = qrState.payloadType;
+		if (t === 'url') return 'https://example.com';
+		if (t === 'text') return 'Enter text...';
+		if (t === 'phone') return '+1 234 567 8900';
+		if (t === 'email') return 'recipient@example.com';
+		if (t === 'wifi') return 'Network name (SSID)';
+		if (t === 'sms') return 'Phone number';
+		if (t === 'vcard') return 'First name';
+		if (t === 'calendar') return 'Event title';
+		if (t === 'geo') return 'Latitude';
+		if (t === 'mecard') return 'Name';
+		return 'Enter data...';
+	}
+
+	function getPrimaryLabel(): string {
+		const t = qrState.payloadType;
+		if (t === 'url') return 'URL';
+		if (t === 'text') return 'Text';
+		if (t === 'phone') return 'Phone number';
+		return 'QR content';
+	}
+
+	// Whether the current type has a simple primary field or needs a multi-field form
+	const isSimpleType = $derived(['url', 'text', 'phone'].includes(qrState.payloadType));
+	const themeItems = themes.map((t) => ({ value: t.id, label: t.name }));
+	const previewStatusText = $derived.by(() => {
+		if (!svgOutput) {
+			return 'QR preview will appear after you enter content.';
+		}
+
+		return `${payloadLabels[qrState.payloadType]} QR preview ready. ${qrState.encodedData.length} characters encoded.`;
+	});
+
+	// --- Theme ---
 	onMount(() => {
-		const theme = getTheme(qrState.themeId);
-		applyTheme(theme);
-		qrState.applyThemeColors(theme.colors.qrFg, theme.colors.qrBg);
+		switchTheme(themeStore.get());
 	});
 
 	function switchTheme(id: string) {
-		qrState.themeId = id;
-		const theme = getTheme(id);
-		applyTheme(theme);
-		qrState.applyThemeColors(theme.colors.qrFg, theme.colors.qrBg);
+		setTheme(id);
+		const { fg, bg } = getQrColors();
+		qrState.applyThemeColors(fg, bg);
 	}
 
-	function handleLogoUpload(e: Event) {
-		const input = e.target as HTMLInputElement;
-		const file = input.files?.[0];
-		if (!file) return;
-		const reader = new FileReader();
-		reader.onload = () => {
-			qrState.logo = reader.result as string;
-		};
-		reader.readAsDataURL(file);
+	onDestroy(() => {
+		stopCapture();
+	});
+
+	// --- Export ---
+	function exportAs(fmt: 'svg' | 'png' | 'jpg') {
+		if (!svgOutput) return;
+		const qrOptions = getCurrentQrOptions();
+
+		if (fmt === 'svg') {
+			const blob = new Blob([svgOutput], { type: 'image/svg+xml' });
+			download(blob, 'qr.svg');
+		} else {
+			if (!exportCanvas) return;
+			generateQRCanvas(exportCanvas, qrOptions);
+			const mimeType = fmt === 'png' ? 'image/png' : 'image/jpeg';
+			exportCanvas.toBlob(
+				(blob) => {
+					if (blob) download(blob, `qr.${fmt}`);
+				},
+				mimeType,
+				0.95
+			);
+		}
 	}
 
-	function exportSVG() {
-		const blob = new Blob([svgOutput], { type: 'image/svg+xml' });
-		downloadBlob(blob, 'qr.svg');
-	}
-
-	function exportPNG() {
-		if (!exportCanvas) return;
-		generateQRCanvas(exportCanvas, qrState.qrOptions);
-		exportCanvas.toBlob((blob) => {
-			if (blob) downloadBlob(blob, 'qr.png');
-		});
-	}
-
-	function downloadBlob(blob: Blob, filename: string) {
+	function download(blob: Blob, filename: string) {
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
@@ -78,52 +188,63 @@
 		URL.revokeObjectURL(url);
 	}
 
-	async function handleReaderFile(e: Event) {
-		const input = e.target as HTMLInputElement;
-		const file = input.files?.[0];
-		if (!file) return;
-		const result = await readQRFromFile(file);
+	function applyReaderResult(result: QRReadResult) {
 		readerResult = result.data;
 		readerError = result.error ?? '';
 	}
 
-	async function handlePaste() {
-		const result = await readQRFromClipboard();
-		readerResult = result.data;
-		readerError = result.error ?? '';
+	function resetReaderState() {
+		readerResult = '';
+		readerError = '';
 	}
 
-	function toggleScreenCapture() {
-		if (isCapturing && captureController) {
-			captureController.stop();
-			captureController = null;
-			isCapturing = false;
+	async function processReaderFile(file: File) {
+		if (!file.type.startsWith('image/')) {
+			applyReaderResult({
+				data: '',
+				success: false,
+				error: 'Choose an image file with a QR code'
+			});
 			return;
 		}
 
-		const controller = createScreenCapture(
-			(imageData: ImageData) => {
-				const result = readQRFromImageData(imageData);
-				if (result.success) {
-					readerResult = result.data;
-					readerError = '';
-					controller.stop();
-					captureController = null;
-					isCapturing = false;
-				}
-			},
-			(err: string) => {
-				readerError = err;
-				isCapturing = false;
-			}
-		);
-		captureController = controller;
-		isCapturing = true;
-		controller.start();
+		resetReaderState();
+		applyReaderResult(await readQRFromFile(file));
+	}
+
+	async function handlePasteButton() {
+		resetReaderState();
+		applyReaderResult(await readQRFromClipboard());
+	}
+
+	function loadResultIntoGenerator() {
+		if (!readerResult) return;
+
+		activeSection = 'generate';
+		handlePrimaryInput(readerResult.trim());
+	}
+
+	// --- Reader ---
+	async function handleFileDrop(e: DragEvent) {
+		e.preventDefault();
+		isDragging = false;
+		const file = e.dataTransfer?.files[0];
+		if (!file) return;
+
+		await processReaderFile(file);
+	}
+
+	async function handleFileSelect(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+
+		await processReaderFile(file);
+		input.value = '';
 	}
 
 	async function handleGlobalPaste(e: ClipboardEvent) {
-		if (activeTab !== 'read') return;
+		if (activeSection !== 'read') return;
 		const items = e.clipboardData?.items;
 		if (!items) return;
 		for (const item of items) {
@@ -131,425 +252,1784 @@
 				e.preventDefault();
 				const file = item.getAsFile();
 				if (file) {
-					const result = await readQRFromFile(file);
-					readerResult = result.data;
-					readerError = result.error ?? '';
+					await processReaderFile(file);
 				}
 				return;
 			}
 		}
 	}
+
+	async function startWebcam() {
+		stopCapture();
+		resetReaderState();
+		showCaptureMenu = false;
+		captureMode = 'webcam';
+		isCapturing = true;
+		try {
+			webcamStream = await navigator.mediaDevices.getUserMedia({
+				video: { facingMode: 'environment' }
+			});
+			await new Promise((r) => setTimeout(r, 100));
+			if (webcamVideo) {
+				webcamVideo.srcObject = webcamStream;
+				await webcamVideo.play();
+				scanWebcamFrame();
+			}
+		} catch {
+			readerError = 'Camera access denied';
+			stopCapture();
+		}
+	}
+
+	function scanWebcamFrame() {
+		if (!webcamVideo || !webcamStream) return;
+		if (webcamVideo.readyState !== webcamVideo.HAVE_ENOUGH_DATA) {
+			webcamScanFrame = requestAnimationFrame(scanWebcamFrame);
+			return;
+		}
+		const canvas = document.createElement('canvas');
+		canvas.width = webcamVideo.videoWidth;
+		canvas.height = webcamVideo.videoHeight;
+		const ctx = canvas.getContext('2d')!;
+		ctx.drawImage(webcamVideo, 0, 0);
+		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+		const result = readQRFromImageData(imageData);
+		if (result.success) {
+			applyReaderResult(result);
+			stopCapture();
+			return;
+		}
+		webcamScanFrame = requestAnimationFrame(scanWebcamFrame);
+	}
+
+	function startScreenCapture() {
+		stopCapture();
+		resetReaderState();
+		showCaptureMenu = false;
+		captureMode = 'screen';
+		isCapturing = true;
+		const controller = createScreenCapture(
+			(imageData: ImageData) => {
+				const result = readQRFromImageData(imageData);
+				if (result.success) {
+					applyReaderResult(result);
+					stopCapture();
+				}
+			},
+			(err: string) => {
+				readerError = err;
+				stopCapture();
+			}
+		);
+		captureController = controller;
+		void controller.start();
+	}
+
+	function stopCapture() {
+		if (captureController) {
+			captureController.stop();
+			captureController = null;
+		}
+		if (webcamScanFrame !== null) {
+			cancelAnimationFrame(webcamScanFrame);
+			webcamScanFrame = null;
+		}
+		if (webcamStream) {
+			webcamStream.getTracks().forEach((t) => t.stop());
+			webcamStream = null;
+		}
+		isCapturing = false;
+		captureMode = null;
+	}
+
+	function handleWindowClick() {
+		if (showCaptureMenu) {
+			showCaptureMenu = false;
+		}
+	}
+
+	function moveRadioSelection<T extends string>(
+		values: readonly T[],
+		current: T,
+		direction: 1 | -1
+	) {
+		const currentIndex = values.indexOf(current);
+		const nextIndex = (currentIndex + direction + values.length) % values.length;
+		return values[nextIndex];
+	}
+
+	function handleWifiEncryptionKeydown(
+		e: KeyboardEvent,
+		current: (typeof wifiEncryptionValues)[number]
+	) {
+		if (
+			e.key !== 'ArrowRight' &&
+			e.key !== 'ArrowDown' &&
+			e.key !== 'ArrowLeft' &&
+			e.key !== 'ArrowUp'
+		) {
+			return;
+		}
+
+		e.preventDefault();
+		const direction = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
+		qrState.setPayloadField(
+			'wifi',
+			'encryption',
+			moveRadioSelection(wifiEncryptionValues, current, direction)
+		);
+	}
+
+	function handleErrorCorrectionKeydown(e: KeyboardEvent, current: ErrorCorrectionLevel) {
+		if (
+			e.key !== 'ArrowRight' &&
+			e.key !== 'ArrowDown' &&
+			e.key !== 'ArrowLeft' &&
+			e.key !== 'ArrowUp'
+		) {
+			return;
+		}
+
+		e.preventDefault();
+		const direction = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
+		qrState.errorCorrection = moveRadioSelection(errorCorrectionValues, current, direction);
+	}
+
+	function handleCaptureMenuTriggerKeydown(e: KeyboardEvent) {
+		if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			showCaptureMenu = true;
+			return;
+		}
+
+		if (e.key === 'Escape') {
+			showCaptureMenu = false;
+		}
+	}
 </script>
 
-<svelte:window onpaste={handleGlobalPaste} />
+<svelte:window onpaste={handleGlobalPaste} onclick={handleWindowClick} />
 <svelte:head>
 	<title>qr.mia.cx</title>
 	<meta name="description" content="QR code generator and reader" />
 </svelte:head>
 
-<canvas bind:this={exportCanvas} class="hidden"></canvas>
+<canvas bind:this={exportCanvas} class="hidden" aria-hidden="true"></canvas>
 
-<div class="flex min-h-screen flex-col lg:flex-row">
-	<!-- Controls Panel -->
-	<aside class="controls-panel flex w-full flex-col overflow-y-auto border-r lg:w-[420px]" style="border-color: var(--c-border); background: var(--c-bg-secondary);">
-		<!-- Header -->
-		<header class="flex items-center gap-3 border-b px-5 py-4" style="border-color: var(--c-border);">
-			<div class="grid-icon" style="color: var(--c-accent);">
-				<svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-					<rect x="2" y="2" width="7" height="7" rx="1" fill="currentColor"/>
-					<rect x="15" y="2" width="7" height="7" rx="1" fill="currentColor"/>
-					<rect x="2" y="15" width="7" height="7" rx="1" fill="currentColor"/>
-					<rect x="11" y="11" width="2" height="2" fill="currentColor"/>
-					<rect x="15" y="11" width="2" height="2" fill="currentColor"/>
-					<rect x="11" y="15" width="2" height="2" fill="currentColor"/>
-					<rect x="15" y="15" width="2" height="2" fill="currentColor"/>
-					<rect x="19" y="15" width="2" height="2" fill="currentColor"/>
-					<rect x="15" y="19" width="2" height="2" fill="currentColor"/>
-					<rect x="19" y="19" width="2" height="2" fill="currentColor"/>
-					<rect x="11" y="19" width="2" height="2" fill="currentColor"/>
-				</svg>
-			</div>
-			<h1 class="text-lg font-semibold" style="font-family: 'Outfit', sans-serif;">qr.mia.cx</h1>
-		</header>
-
-		<!-- Tab Switcher -->
-		<div class="flex border-b" style="border-color: var(--c-border);">
-			<button
-				class="flex-1 px-4 py-2.5 text-sm font-medium transition-colors"
-				style="background: {activeTab === 'generate' ? 'var(--c-bg-tertiary)' : 'transparent'}; color: {activeTab === 'generate' ? 'var(--c-fg)' : 'var(--c-fg-muted)'};"
-				onclick={() => activeTab = 'generate'}
-			>Generate</button>
-			<button
-				class="flex-1 px-4 py-2.5 text-sm font-medium transition-colors"
-				style="background: {activeTab === 'read' ? 'var(--c-bg-tertiary)' : 'transparent'}; color: {activeTab === 'read' ? 'var(--c-fg)' : 'var(--c-fg-muted)'};"
-				onclick={() => activeTab = 'read'}
-			>Read</button>
-		</div>
-
-		{#if activeTab === 'generate'}
-			<div class="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
-				<!-- Payload Type -->
-				<section>
-					<span class="section-label">Type</span>
-					<div class="grid grid-cols-5 gap-1.5">
-						{#each payloadTypes as [value, label]}
-							<button
-								class="rounded px-2 py-1.5 text-xs font-medium transition-colors"
-								style="background: {qrState.payloadType === value ? 'var(--c-accent)' : 'var(--c-bg-tertiary)'}; color: {qrState.payloadType === value ? 'var(--c-accent-fg)' : 'var(--c-fg-secondary)'};"
-								onclick={() => qrState.payloadType = value}
-							>{label}</button>
-						{/each}
-					</div>
-				</section>
-
-				<!-- Payload Fields -->
-				<section>
-					<span class="section-label">Content</span>
-					{#if qrState.payloadType === 'url'}
-						<input type="url" placeholder="https://example.com" class="field-input" value={qrState.payloads.url.url} oninput={(e) => qrState.setPayloadField('url', 'url', e.currentTarget.value)} />
-					{:else if qrState.payloadType === 'text'}
-						<textarea placeholder="Your text here..." class="field-input min-h-[80px] resize-y" value={qrState.payloads.text.text} oninput={(e) => qrState.setPayloadField('text', 'text', e.currentTarget.value)}></textarea>
-					{:else if qrState.payloadType === 'wifi'}
-						<div class="flex flex-col gap-2">
-							<input type="text" placeholder="Network name (SSID)" class="field-input" value={qrState.payloads.wifi.ssid} oninput={(e) => qrState.setPayloadField('wifi', 'ssid', e.currentTarget.value)} />
-							<input type="password" placeholder="Password" class="field-input" value={qrState.payloads.wifi.password} oninput={(e) => qrState.setPayloadField('wifi', 'password', e.currentTarget.value)} />
-							<select class="field-input" value={qrState.payloads.wifi.encryption} onchange={(e) => qrState.setPayloadField('wifi', 'encryption', e.currentTarget.value)}>
-								<option value="WPA">WPA/WPA2</option>
-								<option value="WEP">WEP</option>
-								<option value="nopass">No encryption</option>
-							</select>
-							<label class="flex items-center gap-2 text-sm" style="color: var(--c-fg-secondary);">
-								<input type="checkbox" checked={qrState.payloads.wifi.hidden} onchange={(e) => qrState.setPayloadField('wifi', 'hidden', e.currentTarget.checked)} />
-								Hidden network
-							</label>
-						</div>
-					{:else if qrState.payloadType === 'phone'}
-						<input type="tel" placeholder="+1 234 567 8900" class="field-input" value={qrState.payloads.phone.number} oninput={(e) => qrState.setPayloadField('phone', 'number', e.currentTarget.value)} />
-					{:else if qrState.payloadType === 'sms'}
-						<div class="flex flex-col gap-2">
-							<input type="tel" placeholder="Phone number" class="field-input" value={qrState.payloads.sms.number} oninput={(e) => qrState.setPayloadField('sms', 'number', e.currentTarget.value)} />
-							<textarea placeholder="Message" class="field-input min-h-[60px] resize-y" value={qrState.payloads.sms.message} oninput={(e) => qrState.setPayloadField('sms', 'message', e.currentTarget.value)}></textarea>
-						</div>
-					{:else if qrState.payloadType === 'email'}
-						<div class="flex flex-col gap-2">
-							<input type="email" placeholder="recipient@example.com" class="field-input" value={qrState.payloads.email.to} oninput={(e) => qrState.setPayloadField('email', 'to', e.currentTarget.value)} />
-							<input type="text" placeholder="Subject" class="field-input" value={qrState.payloads.email.subject} oninput={(e) => qrState.setPayloadField('email', 'subject', e.currentTarget.value)} />
-							<textarea placeholder="Body" class="field-input min-h-[60px] resize-y" value={qrState.payloads.email.body} oninput={(e) => qrState.setPayloadField('email', 'body', e.currentTarget.value)}></textarea>
-						</div>
-					{:else if qrState.payloadType === 'vcard'}
-						<div class="flex flex-col gap-2">
-							<div class="grid grid-cols-2 gap-2">
-								<input type="text" placeholder="First name" class="field-input" value={qrState.payloads.vcard.firstName} oninput={(e) => qrState.setPayloadField('vcard', 'firstName', e.currentTarget.value)} />
-								<input type="text" placeholder="Last name" class="field-input" value={qrState.payloads.vcard.lastName} oninput={(e) => qrState.setPayloadField('vcard', 'lastName', e.currentTarget.value)} />
-							</div>
-							<input type="tel" placeholder="Phone" class="field-input" value={qrState.payloads.vcard.phone} oninput={(e) => qrState.setPayloadField('vcard', 'phone', e.currentTarget.value)} />
-							<input type="email" placeholder="Email" class="field-input" value={qrState.payloads.vcard.email} oninput={(e) => qrState.setPayloadField('vcard', 'email', e.currentTarget.value)} />
-							<input type="text" placeholder="Organization" class="field-input" value={qrState.payloads.vcard.org} oninput={(e) => qrState.setPayloadField('vcard', 'org', e.currentTarget.value)} />
-							<input type="text" placeholder="Title" class="field-input" value={qrState.payloads.vcard.title} oninput={(e) => qrState.setPayloadField('vcard', 'title', e.currentTarget.value)} />
-							<input type="url" placeholder="Website" class="field-input" value={qrState.payloads.vcard.url} oninput={(e) => qrState.setPayloadField('vcard', 'url', e.currentTarget.value)} />
-							<input type="text" placeholder="Address" class="field-input" value={qrState.payloads.vcard.address} oninput={(e) => qrState.setPayloadField('vcard', 'address', e.currentTarget.value)} />
-						</div>
-					{:else if qrState.payloadType === 'calendar'}
-						<div class="flex flex-col gap-2">
-							<input type="text" placeholder="Event title" class="field-input" value={qrState.payloads.calendar.title} oninput={(e) => qrState.setPayloadField('calendar', 'title', e.currentTarget.value)} />
-							<input type="text" placeholder="Location" class="field-input" value={qrState.payloads.calendar.location} oninput={(e) => qrState.setPayloadField('calendar', 'location', e.currentTarget.value)} />
-							<textarea placeholder="Description" class="field-input min-h-[60px] resize-y" value={qrState.payloads.calendar.description} oninput={(e) => qrState.setPayloadField('calendar', 'description', e.currentTarget.value)}></textarea>
-							<label class="text-xs" style="color: var(--c-fg-muted);">Start
-								<input type="datetime-local" class="field-input" value={qrState.payloads.calendar.start} oninput={(e) => qrState.setPayloadField('calendar', 'start', e.currentTarget.value)} />
-							</label>
-							<label class="text-xs" style="color: var(--c-fg-muted);">End
-								<input type="datetime-local" class="field-input" value={qrState.payloads.calendar.end} oninput={(e) => qrState.setPayloadField('calendar', 'end', e.currentTarget.value)} />
-							</label>
-						</div>
-					{:else if qrState.payloadType === 'geo'}
-						<div class="grid grid-cols-2 gap-2">
-							<input type="text" placeholder="Latitude" class="field-input" value={qrState.payloads.geo.latitude} oninput={(e) => qrState.setPayloadField('geo', 'latitude', e.currentTarget.value)} />
-							<input type="text" placeholder="Longitude" class="field-input" value={qrState.payloads.geo.longitude} oninput={(e) => qrState.setPayloadField('geo', 'longitude', e.currentTarget.value)} />
-						</div>
-					{:else if qrState.payloadType === 'mecard'}
-						<div class="flex flex-col gap-2">
-							<input type="text" placeholder="Name" class="field-input" value={qrState.payloads.mecard.name} oninput={(e) => qrState.setPayloadField('mecard', 'name', e.currentTarget.value)} />
-							<input type="tel" placeholder="Phone" class="field-input" value={qrState.payloads.mecard.phone} oninput={(e) => qrState.setPayloadField('mecard', 'phone', e.currentTarget.value)} />
-							<input type="email" placeholder="Email" class="field-input" value={qrState.payloads.mecard.email} oninput={(e) => qrState.setPayloadField('mecard', 'email', e.currentTarget.value)} />
-							<input type="url" placeholder="URL" class="field-input" value={qrState.payloads.mecard.url} oninput={(e) => qrState.setPayloadField('mecard', 'url', e.currentTarget.value)} />
-							<input type="text" placeholder="Address" class="field-input" value={qrState.payloads.mecard.address} oninput={(e) => qrState.setPayloadField('mecard', 'address', e.currentTarget.value)} />
-							<textarea placeholder="Note" class="field-input min-h-[50px] resize-y" value={qrState.payloads.mecard.note} oninput={(e) => qrState.setPayloadField('mecard', 'note', e.currentTarget.value)}></textarea>
-						</div>
-					{/if}
-				</section>
-
-				<!-- Error Correction -->
-				<section>
-					<span class="section-label">Error Correction</span>
-					<div class="grid grid-cols-4 gap-1.5">
-						{#each errorLevels as level}
-							<button
-								class="flex flex-col items-center rounded px-2 py-2 transition-colors"
-								style="background: {qrState.errorCorrection === level.value ? 'var(--c-accent)' : 'var(--c-bg-tertiary)'}; color: {qrState.errorCorrection === level.value ? 'var(--c-accent-fg)' : 'var(--c-fg-secondary)'};"
-								onclick={() => qrState.errorCorrection = level.value}
+<main class="page">
+	<h1 class="sr-only">QR code generator and reader</h1>
+	<div class="card" aria-labelledby="app-subtitle">
+		<!-- Left: Form -->
+		<section class="card-left" aria-labelledby="controls-heading">
+			<h2 id="controls-heading" class="sr-only">QR controls</h2>
+			<header class="card-left-header">
+				<div class="header-left" id="app-subtitle">
+					<span class="logo">QR</span>
+					<span class="logo-domain">.mia.cx</span>
+				</div>
+				<Dropdown
+					items={themeItems}
+					value={themeStore.get()}
+					onselect={(id) => switchTheme(id)}
+					align="right"
+					label="Theme"
+				>
+					{#snippet trigger({ open, value })}
+						<span class="theme-dropdown-trigger">
+							<span class="trigger-swatch" style="background: {getTheme(value).accent}"></span>
+							<span class="trigger-theme-name">{getTheme(value).name}</span>
+							<svg
+								class="type-dropdown-chevron"
+								class:open
+								width="14"
+								height="14"
+								viewBox="0 0 14 14"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"><path d="M4 6l3 3 3-3" /></svg
 							>
-								<span class="text-sm font-semibold">{level.label}</span>
-								<span class="text-[10px] opacity-70">{level.desc}</span>
+						</span>
+					{/snippet}
+					{#snippet children({ value, label, selected })}
+						<span
+							class="theme-dropdown-item"
+							class:selected
+							style="background: {getTheme(value).bg}; color: {getTheme(value).fg};"
+						>
+							<span class="swatch-dot" style="background: {getTheme(value).accent}"></span>
+							{label}
+						</span>
+					{/snippet}
+				</Dropdown>
+			</header>
+
+			<!-- Accordion: Generate -->
+			<h3 class="accordion-heading">
+				<button
+					type="button"
+					class="accordion-trigger"
+					class:expanded={activeSection === 'generate'}
+					aria-expanded={activeSection === 'generate'}
+					aria-controls="generate-panel"
+					id="generate-trigger"
+					onclick={() => (activeSection = 'generate')}
+				>
+					<span class="accordion-title" class:large={activeSection === 'generate'}
+						>Generate a QR code</span
+					>
+					<svg
+						class="accordion-chevron"
+						class:open={activeSection === 'generate'}
+						width="16"
+						height="16"
+						viewBox="0 0 16 16"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg
+					>
+				</button>
+			</h3>
+
+			<div
+				id="generate-panel"
+				class="accordion-panel"
+				class:open={activeSection === 'generate'}
+				role="region"
+				aria-labelledby="generate-trigger"
+			>
+				<div class="accordion-content">
+					<section class="generate-form" aria-label="QR generation form">
+						<!-- Type Selector -->
+						<Dropdown
+							items={payloadTypeItems}
+							value={qrState.payloadType}
+							label="QR content type"
+							onselect={(v) => {
+								qrState.payloadType = v as PayloadType;
+							}}
+						>
+							{#snippet trigger({ open, value })}
+								<span class="type-dropdown-trigger">
+									<span class="type-dropdown-label">Type</span>
+									<span class="type-dropdown-value">{payloadLabels[value as PayloadType]}</span>
+									<svg
+										class="type-dropdown-chevron"
+										class:open
+										width="14"
+										height="14"
+										viewBox="0 0 14 14"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.5"><path d="M4 6l3 3 3-3" /></svg
+									>
+								</span>
+							{/snippet}
+						</Dropdown>
+
+						<!-- Primary field (with auto-detect for simple types) -->
+						{#if isSimpleType}
+							<div class="field">
+								<input
+									class="input"
+									type="text"
+									aria-label={getPrimaryLabel()}
+									placeholder={getPrimaryPlaceholder()}
+									value={getPrimaryValue()}
+									oninput={(e) => handlePrimaryInput(e.currentTarget.value)}
+								/>
+							</div>
+						{:else}
+							<!-- Multi-field forms -->
+							<div class="fields">
+								{#if qrState.payloadType === 'wifi'}
+									<input
+										class="input"
+										type="text"
+										aria-label="Wi-Fi network name"
+										placeholder="Network name (SSID)"
+										value={qrState.payloads.wifi.ssid}
+										oninput={(e) => qrState.setPayloadField('wifi', 'ssid', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="password"
+										aria-label="Wi-Fi password"
+										placeholder="Password"
+										value={qrState.payloads.wifi.password}
+										oninput={(e) =>
+											qrState.setPayloadField('wifi', 'password', e.currentTarget.value)}
+									/>
+									<div class="inline-options">
+										<span class="field-label" id="wifi-encryption-label">Encryption</span>
+										<div
+											class="toggle-group"
+											role="radiogroup"
+											aria-labelledby="wifi-encryption-label"
+										>
+											{#each ['WPA', 'WEP', 'None'] as enc (enc)}
+												{@const val = (
+													enc === 'None' ? 'nopass' : enc
+												) as (typeof wifiEncryptionValues)[number]}
+												<button
+													type="button"
+													class="toggle-item"
+													class:active={qrState.payloads.wifi.encryption === val}
+													role="radio"
+													aria-checked={qrState.payloads.wifi.encryption === val}
+													onkeydown={(e) => handleWifiEncryptionKeydown(e, val)}
+													onclick={() => qrState.setPayloadField('wifi', 'encryption', val)}
+													>{enc}</button
+												>
+											{/each}
+										</div>
+									</div>
+									<div class="inline-options">
+										<span class="field-label">Hidden network</span>
+										<button
+											type="button"
+											class="custom-checkbox"
+											class:checked={qrState.payloads.wifi.hidden}
+											aria-label="Hidden network"
+											aria-pressed={qrState.payloads.wifi.hidden}
+											onclick={() =>
+												qrState.setPayloadField('wifi', 'hidden', !qrState.payloads.wifi.hidden)}
+										>
+											{#if qrState.payloads.wifi.hidden}
+												<svg
+													width="12"
+													height="12"
+													viewBox="0 0 12 12"
+													fill="none"
+													stroke="currentColor"
+													stroke-width="2"><path d="M2 6l3 3 5-5" /></svg
+												>
+											{/if}
+										</button>
+									</div>
+								{:else if qrState.payloadType === 'sms'}
+									<input
+										class="input"
+										type="tel"
+										aria-label="SMS phone number"
+										placeholder="Phone number"
+										value={qrState.payloads.sms.number}
+										oninput={(e) => qrState.setPayloadField('sms', 'number', e.currentTarget.value)}
+									/>
+									<textarea
+										class="input textarea"
+										aria-label="SMS message"
+										placeholder="Message"
+										rows="2"
+										value={qrState.payloads.sms.message}
+										oninput={(e) =>
+											qrState.setPayloadField('sms', 'message', e.currentTarget.value)}
+									></textarea>
+								{:else if qrState.payloadType === 'email'}
+									<input
+										class="input"
+										type="email"
+										aria-label="Recipient email"
+										placeholder="Recipient email"
+										value={qrState.payloads.email.to}
+										oninput={(e) => qrState.setPayloadField('email', 'to', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="text"
+										aria-label="Email subject"
+										placeholder="Subject"
+										value={qrState.payloads.email.subject}
+										oninput={(e) =>
+											qrState.setPayloadField('email', 'subject', e.currentTarget.value)}
+									/>
+									<textarea
+										class="input textarea"
+										aria-label="Email body"
+										placeholder="Body"
+										rows="2"
+										value={qrState.payloads.email.body}
+										oninput={(e) => qrState.setPayloadField('email', 'body', e.currentTarget.value)}
+									></textarea>
+								{:else if qrState.payloadType === 'vcard'}
+									<div class="field-row">
+										<input
+											class="input"
+											type="text"
+											aria-label="vCard first name"
+											placeholder="First name"
+											value={qrState.payloads.vcard.firstName}
+											oninput={(e) =>
+												qrState.setPayloadField('vcard', 'firstName', e.currentTarget.value)}
+										/>
+										<input
+											class="input"
+											type="text"
+											aria-label="vCard last name"
+											placeholder="Last name"
+											value={qrState.payloads.vcard.lastName}
+											oninput={(e) =>
+												qrState.setPayloadField('vcard', 'lastName', e.currentTarget.value)}
+										/>
+									</div>
+									<input
+										class="input"
+										type="tel"
+										aria-label="vCard phone"
+										placeholder="Phone"
+										value={qrState.payloads.vcard.phone}
+										oninput={(e) =>
+											qrState.setPayloadField('vcard', 'phone', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="email"
+										aria-label="vCard email"
+										placeholder="Email"
+										value={qrState.payloads.vcard.email}
+										oninput={(e) =>
+											qrState.setPayloadField('vcard', 'email', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="text"
+										aria-label="vCard organization"
+										placeholder="Organization"
+										value={qrState.payloads.vcard.org}
+										oninput={(e) => qrState.setPayloadField('vcard', 'org', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="text"
+										aria-label="vCard title"
+										placeholder="Title"
+										value={qrState.payloads.vcard.title}
+										oninput={(e) =>
+											qrState.setPayloadField('vcard', 'title', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="url"
+										aria-label="vCard website"
+										placeholder="Website"
+										value={qrState.payloads.vcard.url}
+										oninput={(e) => qrState.setPayloadField('vcard', 'url', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="text"
+										aria-label="vCard address"
+										placeholder="Address"
+										value={qrState.payloads.vcard.address}
+										oninput={(e) =>
+											qrState.setPayloadField('vcard', 'address', e.currentTarget.value)}
+									/>
+								{:else if qrState.payloadType === 'calendar'}
+									<input
+										class="input"
+										type="text"
+										aria-label="Calendar event title"
+										placeholder="Event title"
+										value={qrState.payloads.calendar.title}
+										oninput={(e) =>
+											qrState.setPayloadField('calendar', 'title', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="text"
+										aria-label="Calendar location"
+										placeholder="Location"
+										value={qrState.payloads.calendar.location}
+										oninput={(e) =>
+											qrState.setPayloadField('calendar', 'location', e.currentTarget.value)}
+									/>
+									<textarea
+										class="input textarea"
+										aria-label="Calendar description"
+										placeholder="Description"
+										rows="2"
+										value={qrState.payloads.calendar.description}
+										oninput={(e) =>
+											qrState.setPayloadField('calendar', 'description', e.currentTarget.value)}
+									></textarea>
+									<DateRangePicker
+										label="Calendar event date and time range"
+										start={qrState.payloads.calendar.start}
+										end={qrState.payloads.calendar.end}
+										onchange={(s, e) => {
+											qrState.setPayloadField('calendar', 'start', s);
+											qrState.setPayloadField('calendar', 'end', e);
+										}}
+									/>
+								{:else if qrState.payloadType === 'geo'}
+									<div class="field-row">
+										<input
+											class="input"
+											type="text"
+											aria-label="Latitude"
+											placeholder="Latitude"
+											value={qrState.payloads.geo.latitude}
+											oninput={(e) =>
+												qrState.setPayloadField('geo', 'latitude', e.currentTarget.value)}
+										/>
+										<input
+											class="input"
+											type="text"
+											aria-label="Longitude"
+											placeholder="Longitude"
+											value={qrState.payloads.geo.longitude}
+											oninput={(e) =>
+												qrState.setPayloadField('geo', 'longitude', e.currentTarget.value)}
+										/>
+									</div>
+								{:else if qrState.payloadType === 'mecard'}
+									<input
+										class="input"
+										type="text"
+										aria-label="MeCard name"
+										placeholder="Name"
+										value={qrState.payloads.mecard.name}
+										oninput={(e) =>
+											qrState.setPayloadField('mecard', 'name', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="tel"
+										aria-label="MeCard phone"
+										placeholder="Phone"
+										value={qrState.payloads.mecard.phone}
+										oninput={(e) =>
+											qrState.setPayloadField('mecard', 'phone', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="email"
+										aria-label="MeCard email"
+										placeholder="Email"
+										value={qrState.payloads.mecard.email}
+										oninput={(e) =>
+											qrState.setPayloadField('mecard', 'email', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="url"
+										aria-label="MeCard website"
+										placeholder="Website"
+										value={qrState.payloads.mecard.url}
+										oninput={(e) => qrState.setPayloadField('mecard', 'url', e.currentTarget.value)}
+									/>
+									<input
+										class="input"
+										type="text"
+										aria-label="MeCard address"
+										placeholder="Address"
+										value={qrState.payloads.mecard.address}
+										oninput={(e) =>
+											qrState.setPayloadField('mecard', 'address', e.currentTarget.value)}
+									/>
+									<textarea
+										class="input textarea"
+										aria-label="MeCard note"
+										placeholder="Note"
+										rows="2"
+										value={qrState.payloads.mecard.note}
+										oninput={(e) =>
+											qrState.setPayloadField('mecard', 'note', e.currentTarget.value)}
+									></textarea>
+								{/if}
+							</div>
+						{/if}
+					</section>
+				</div>
+			</div>
+
+			<!-- Accordion: Read -->
+			<h3 class="accordion-heading">
+				<button
+					type="button"
+					class="accordion-trigger"
+					class:expanded={activeSection === 'read'}
+					aria-expanded={activeSection === 'read'}
+					aria-controls="read-panel"
+					id="read-trigger"
+					onclick={() => (activeSection = 'read')}
+				>
+					<span class="accordion-title" class:large={activeSection === 'read'}>Read a QR code</span>
+					<svg
+						class="accordion-chevron"
+						class:open={activeSection === 'read'}
+						width="16"
+						height="16"
+						viewBox="0 0 16 16"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg
+					>
+				</button>
+			</h3>
+
+			<div
+				id="read-panel"
+				class="accordion-panel"
+				class:open={activeSection === 'read'}
+				role="region"
+				aria-labelledby="read-trigger"
+			>
+				<div class="accordion-content">
+					<!-- Drag & Drop Zone -->
+					<section
+						class="drop-zone"
+						class:dragging={isDragging}
+						aria-labelledby="reader-upload-title"
+						aria-describedby="reader-upload-help"
+						ondragover={(e) => {
+							e.preventDefault();
+							isDragging = true;
+						}}
+						ondragleave={() => (isDragging = false)}
+						ondrop={handleFileDrop}
+					>
+						<svg
+							width="32"
+							height="32"
+							viewBox="0 0 32 32"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							class="drop-icon"
+						>
+							<rect x="4" y="4" width="24" height="24" stroke-dasharray="4 2" />
+							<path d="M16 10v12M12 18l4 4 4-4" />
+						</svg>
+						<h4 id="reader-upload-title" class="drop-text">Drag & drop an image here</h4>
+						<div class="browse-capture-row">
+							<label class="browse-btn">
+								Browse
+								<input
+									type="file"
+									accept="image/*"
+									class="sr-only"
+									aria-label="Browse for a QR image"
+									onchange={handleFileSelect}
+								/>
+							</label>
+							<span class="drop-hint">or</span>
+							<button
+								type="button"
+								class="browse-btn"
+								aria-label="Paste a QR image from the clipboard"
+								onclick={(e) => {
+									e.stopPropagation();
+									void handlePasteButton();
+								}}
+							>
+								Paste
 							</button>
-						{/each}
-					</div>
-				</section>
+							<span class="drop-hint">or</span>
+							<div class="capture-row">
+								<button
+									type="button"
+									class="capture-btn"
+									aria-haspopup="menu"
+									aria-expanded={showCaptureMenu}
+									aria-controls="capture-menu"
+									onclick={(e) => {
+										e.stopPropagation();
+										showCaptureMenu = !showCaptureMenu;
+									}}
+									onkeydown={handleCaptureMenuTriggerKeydown}
+								>
+									<svg
+										width="14"
+										height="14"
+										viewBox="0 0 16 16"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.5"
+										><rect x="1" y="3.5" width="14" height="10" /><circle
+											cx="8"
+											cy="8.5"
+											r="2.5"
+										/><path d="M5 3.5L6 1.5h4l1 2" /></svg
+									>
+									Capture
+								</button>
 
-				<!-- Module Style -->
-				<section>
-					<span class="section-label">Module Style</span>
-					<div class="grid grid-cols-4 gap-1.5">
-						{#each moduleStyles as style}
-							<button
-								class="rounded px-2 py-1.5 text-xs font-medium transition-colors"
-								style="background: {qrState.moduleStyle === style.value ? 'var(--c-accent)' : 'var(--c-bg-tertiary)'}; color: {qrState.moduleStyle === style.value ? 'var(--c-accent-fg)' : 'var(--c-fg-secondary)'};"
-								onclick={() => qrState.moduleStyle = style.value}
-							>{style.label}</button>
-						{/each}
-					</div>
-				</section>
+								{#if showCaptureMenu}
+									<div
+										id="capture-menu"
+										class="capture-menu"
+										role="menu"
+										aria-label="Capture source"
+										tabindex="-1"
+										onpointerdown={(e) => e.stopPropagation()}
+									>
+										<button
+											type="button"
+											class="capture-menu-item"
+											role="menuitem"
+											onclick={startWebcam}
+										>
+											<svg
+												width="14"
+												height="14"
+												viewBox="0 0 14 14"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="1.5"
+												><circle cx="7" cy="7" r="5" /><circle cx="7" cy="7" r="2" /></svg
+											>
+											Webcam
+										</button>
+										<button
+											type="button"
+											class="capture-menu-item"
+											role="menuitem"
+											onclick={startScreenCapture}
+										>
+											<svg
+												width="14"
+												height="14"
+												viewBox="0 0 14 14"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="1.5"
+												><rect x="1" y="2" width="12" height="9" /><path d="M5 13h4" /></svg
+											>
+											Screen
+										</button>
+									</div>
+								{/if}
+							</div>
+						</div>
+						<p id="reader-upload-help" class="drop-hint">
+							Paste from clipboard with <kbd>Cmd+V</kbd> or use Paste
+						</p>
+					</section>
 
-				<!-- Pixel Size -->
-				<section>
-					<span class="section-label">Pixel Size <span class="font-mono text-xs opacity-60">{qrState.pixelSize}px</span></span>
-					<div class="grid grid-cols-4 gap-1.5">
-						{#each pixelSizes as size}
-							<button
-								class="rounded px-2 py-1.5 text-xs font-medium transition-colors"
-								style="background: {qrState.pixelSize === size ? 'var(--c-accent)' : 'var(--c-bg-tertiary)'}; color: {qrState.pixelSize === size ? 'var(--c-accent-fg)' : 'var(--c-fg-secondary)'};"
-								onclick={() => qrState.pixelSize = size}
-							>{size}:1</button>
-						{/each}
-					</div>
-				</section>
+					<div class="capture-section">
+						{#if isCapturing && captureMode === 'webcam'}
+							<div class="webcam-preview">
+								<video
+									bind:this={webcamVideo}
+									playsinline
+									class="webcam-video"
+									aria-label="Live webcam preview for QR scanning"
+								></video>
+								<button type="button" class="stop-capture-btn" onclick={stopCapture}>Stop</button>
+							</div>
+						{/if}
 
-				<!-- Colors -->
-				<section>
-					<span class="section-label">Colors</span>
-					<div class="grid grid-cols-2 gap-3">
-						<label class="flex items-center gap-2">
-							<input type="color" value={qrState.fgColor} oninput={(e) => qrState.fgColor = e.currentTarget.value} class="color-input" />
-							<span class="text-xs" style="color: var(--c-fg-secondary);">Foreground</span>
-						</label>
-						<label class="flex items-center gap-2">
-							<input type="color" value={qrState.bgColor} oninput={(e) => qrState.bgColor = e.currentTarget.value} class="color-input" />
-							<span class="text-xs" style="color: var(--c-fg-secondary);">Background</span>
-						</label>
-					</div>
-				</section>
-
-				<!-- Logo -->
-				<section>
-					<span class="section-label">Logo</span>
-					<div class="flex items-center gap-2">
-						<button
-							class="rounded px-3 py-1.5 text-xs font-medium transition-colors"
-							style="background: var(--c-bg-tertiary); color: var(--c-fg-secondary);"
-							onclick={() => fileInputEl.click()}
-						>Upload Logo</button>
-						{#if qrState.logo}
-							<button
-								class="rounded px-3 py-1.5 text-xs font-medium transition-colors"
-								style="background: var(--c-error); color: var(--c-accent-fg);"
-								onclick={() => qrState.logo = undefined}
-							>Remove</button>
+						{#if isCapturing && captureMode === 'screen'}
+							<div class="capture-status" role="status" aria-live="polite">
+								<span class="capture-dot"></span>
+								Scanning screen...
+								<button type="button" class="stop-capture-btn" onclick={stopCapture}>Stop</button>
+							</div>
 						{/if}
 					</div>
-					<input bind:this={fileInputEl} type="file" accept="image/*" class="hidden" onchange={handleLogoUpload} />
-					{#if qrState.logo && qrState.errorCorrection !== 'H' && qrState.errorCorrection !== 'Q'}
-						<p class="mt-1 text-xs" style="color: var(--c-error);">Tip: Use Q or H error correction with logos</p>
+
+					<!-- Result -->
+					{#if readerResult}
+						<section class="reader-result" aria-labelledby="reader-result-title" aria-live="polite">
+							<h4 id="reader-result-title" class="field-label">Result</h4>
+							<pre class="result-text">{readerResult}</pre>
+							<div class="reader-result-actions">
+								<button
+									type="button"
+									class="copy-btn"
+									onclick={() => navigator.clipboard.writeText(readerResult)}
+								>
+									<svg
+										width="14"
+										height="14"
+										viewBox="0 0 14 14"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.5"
+										><rect x="4" y="4" width="8" height="8" /><path
+											d="M4 10H3a1 1 0 01-1-1V3a1 1 0 011-1h6a1 1 0 011 1v1"
+										/></svg
+									>
+									Copy
+								</button>
+								<button type="button" class="copy-btn" onclick={loadResultIntoGenerator}>
+									<svg
+										width="14"
+										height="14"
+										viewBox="0 0 14 14"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.5"><path d="M2 7h10M8 3l4 4-4 4" /></svg
+									>
+									Use as input
+								</button>
+							</div>
+						</section>
 					{/if}
-				</section>
 
-				<!-- Frame Text -->
-				<section>
-					<span class="section-label">Frame Label</span>
-					<input type="text" placeholder="SCAN ME" class="field-input" value={qrState.frameText} oninput={(e) => qrState.frameText = e.currentTarget.value} />
-				</section>
-
-				<!-- Theme Selector -->
-				<section>
-					<span class="section-label">Theme</span>
-					<div class="grid grid-cols-2 gap-1.5">
-						{#each themes as theme}
-							<button
-								class="flex items-center gap-2 rounded px-2.5 py-2 text-left transition-colors"
-								style="background: {qrState.themeId === theme.id ? 'var(--c-accent)' : 'var(--c-bg-tertiary)'}; color: {qrState.themeId === theme.id ? 'var(--c-accent-fg)' : 'var(--c-fg-secondary)'};"
-								onclick={() => switchTheme(theme.id)}
-							>
-								<span class="flex gap-0.5">
-									<span class="inline-block h-3 w-3 rounded-full" style="background: {theme.colors.bg}; border: 1px solid {theme.colors.border};"></span>
-									<span class="inline-block h-3 w-3 rounded-full" style="background: {theme.colors.accent};"></span>
-									<span class="inline-block h-3 w-3 rounded-full" style="background: {theme.colors.fg};"></span>
-								</span>
-								<span class="truncate text-xs">{theme.name}</span>
-							</button>
-						{/each}
-					</div>
-				</section>
-
-				<!-- Export -->
-				<section class="mt-auto border-t pt-4" style="border-color: var(--c-border);">
-					<span class="section-label">Export</span>
-					<div class="grid grid-cols-2 gap-2">
-						<button
-							class="rounded py-2 text-sm font-semibold transition-colors"
-							style="background: var(--c-accent); color: var(--c-accent-fg);"
-							onclick={exportSVG}
-							disabled={!svgOutput}
-						>SVG</button>
-						<button
-							class="rounded py-2 text-sm font-semibold transition-colors"
-							style="background: var(--c-accent); color: var(--c-accent-fg);"
-							onclick={exportPNG}
-							disabled={!svgOutput}
-						>PNG</button>
-					</div>
-				</section>
+					{#if readerError}
+						<p class="reader-error" role="alert">{readerError}</p>
+					{/if}
+				</div>
 			</div>
-		{:else}
-			<!-- Reader Tab -->
-			<div class="flex flex-1 flex-col gap-4 p-5">
-				<section>
-					<span class="section-label">Read a QR Code</span>
-					<div class="flex flex-col gap-2">
-						<button
-							class="rounded py-2 text-sm font-medium transition-colors"
-							style="background: var(--c-bg-tertiary); color: var(--c-fg-secondary);"
-							onclick={() => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.onchange = (e) => handleReaderFile(e); input.click(); }}
-						>Upload Image</button>
-						<button
-							class="rounded py-2 text-sm font-medium transition-colors"
-							style="background: var(--c-bg-tertiary); color: var(--c-fg-secondary);"
-							onclick={handlePaste}
-						>Paste from Clipboard (or Cmd+V)</button>
-						<button
-							class="rounded py-2 text-sm font-medium transition-colors"
-							style="background: {isCapturing ? 'var(--c-error)' : 'var(--c-bg-tertiary)'}; color: {isCapturing ? 'var(--c-accent-fg)' : 'var(--c-fg-secondary)'};"
-							onclick={toggleScreenCapture}
-						>{isCapturing ? 'Stop Capture' : 'Screen Capture'}</button>
-					</div>
-				</section>
+		</section>
 
-				{#if readerResult}
-					<section>
-						<span class="section-label">Result</span>
-						<div class="rounded p-3" style="background: var(--c-bg-tertiary);">
-							<pre class="whitespace-pre-wrap break-all text-sm" style="color: var(--c-fg); font-family: 'JetBrains Mono', monospace;">{readerResult}</pre>
-						</div>
-						<button
-							class="mt-2 rounded px-3 py-1.5 text-xs font-medium transition-colors"
-							style="background: var(--c-accent); color: var(--c-accent-fg);"
-							onclick={() => navigator.clipboard.writeText(readerResult)}
-						>Copy to Clipboard</button>
-					</section>
-				{/if}
-
-				{#if readerError}
-					<p class="text-sm" style="color: var(--c-error);">{readerError}</p>
-				{/if}
-			</div>
-		{/if}
-	</aside>
-
-	<!-- Preview Panel -->
-	<main class="flex flex-1 flex-col items-center justify-center p-8" style="background: var(--c-bg);">
-		{#if activeTab === 'generate'}
+		<!-- Right: QR Preview -->
+		<aside class="card-right" aria-labelledby="preview-heading">
+			<h2 id="preview-heading" class="sr-only">QR preview and export options</h2>
+			<p class="sr-only" aria-live="polite">{previewStatusText}</p>
 			{#if svgOutput}
-				<div class="qr-preview" style="transition: opacity 0.2s ease;">
+				<div class="preview-qr" aria-hidden="true">
+					<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 					{@html svgOutput}
 				</div>
-				<p class="mt-4 font-mono text-xs" style="color: var(--c-fg-muted);">
-					{qrState.encodedData.length} chars &middot; {qrState.errorCorrection} &middot; {qrState.pixelSize}:1
-				</p>
 			{:else}
-				<div class="flex flex-col items-center gap-3" style="color: var(--c-fg-muted);">
-					<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-						<rect x="2" y="2" width="7" height="7" rx="1"/>
-						<rect x="15" y="2" width="7" height="7" rx="1"/>
-						<rect x="2" y="15" width="7" height="7" rx="1"/>
-						<rect x="11" y="11" width="2" height="2"/>
-						<rect x="15" y="15" width="7" height="7" rx="1"/>
+				<div class="preview-empty" aria-hidden="true">
+					<svg
+						width="64"
+						height="64"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="0.5"
+						class="preview-empty-icon"
+					>
+						<rect x="2" y="2" width="7" height="7" />
+						<rect x="15" y="2" width="7" height="7" />
+						<rect x="2" y="15" width="7" height="7" />
+						<rect x="11" y="11" width="2" height="2" />
+						<rect x="15" y="15" width="7" height="7" />
 					</svg>
-					<p class="text-sm">Enter content to generate a QR code</p>
 				</div>
 			{/if}
-		{:else}
-			<div class="flex flex-col items-center gap-3" style="color: var(--c-fg-muted);">
-				<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-					<path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14"/>
-					<rect x="3" y="3" width="18" height="18" rx="2"/>
-				</svg>
-				<p class="text-sm">Upload, paste, or capture a QR code</p>
+
+			<div class="card-right-footer">
+				<div class="settings-section">
+					<div class="settings-row">
+						<div class="mini-dropdown-wrapper" style="flex: 0 0 auto;">
+							<span class="mini-dropdown-label">Pixel Ratio</span>
+							<div class="ratio-field">
+								<Dropdown
+									items={pixelSizeItems}
+									value={String(qrState.pixelSize)}
+									label="Pixel ratio"
+									onselect={(v) => {
+										qrState.pixelSize = Number(v);
+									}}
+								>
+									{#snippet trigger({ value })}
+										<span class="mini-dropdown-trigger ratio-trigger">
+											<span class="mini-dropdown-value">{value}</span>
+										</span>
+									{/snippet}
+									{#snippet children({ label })}
+										<span class="ratio-item">{label}</span>
+									{/snippet}
+								</Dropdown>
+								<span class="ratio-suffix">:1</span>
+							</div>
+						</div>
+
+						<div class="mini-dropdown-wrapper">
+							<span class="mini-dropdown-label">Error Correction</span>
+							<div class="ec-radio-group" role="radiogroup" aria-label="Error correction level">
+								{#each ecLevels as level (level.value)}
+									<button
+										type="button"
+										class="ec-radio"
+										class:active={qrState.errorCorrection === level.value}
+										role="radio"
+										aria-checked={qrState.errorCorrection === level.value}
+										onkeydown={(e) => handleErrorCorrectionKeydown(e, level.value)}
+										onclick={() => {
+											qrState.errorCorrection = level.value;
+										}}
+									>
+										{level.label} <span class="ec-pct">{level.pct}</span>
+									</button>
+								{/each}
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="export-row" role="group" aria-label="Download QR code">
+					<button
+						type="button"
+						class="export-btn"
+						aria-label="Download QR code as SVG"
+						disabled={!svgOutput}
+						onclick={() => exportAs('svg')}
+					>
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"><path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" /></svg
+						>
+						SVG
+					</button>
+					<button
+						type="button"
+						class="export-btn"
+						aria-label="Download QR code as PNG"
+						disabled={!svgOutput}
+						onclick={() => exportAs('png')}
+					>
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"><path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" /></svg
+						>
+						PNG
+					</button>
+					<button
+						type="button"
+						class="export-btn"
+						aria-label="Download QR code as JPG"
+						disabled={!svgOutput}
+						onclick={() => exportAs('jpg')}
+					>
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"><path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" /></svg
+						>
+						JPG
+					</button>
+				</div>
 			</div>
-		{/if}
-	</main>
-</div>
+		</aside>
+	</div>
+</main>
 
 <style>
-	:global(.section-label) {
-		display: block;
+	/* Page & Card shell */
+	.page {
+		min-height: 100vh;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 1rem;
+		background: var(--background);
+		transition:
+			background 0.3s ease,
+			color 0.3s ease;
+	}
+
+	.card {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		width: 100%;
+		max-width: 900px;
+		height: 720px;
+		border: 1px solid var(--border);
+		overflow: hidden;
+		transition: border-color 0.3s ease;
+	}
+
+	/* Left panel */
+	.card-left {
+		padding: 2rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+		overflow: hidden;
+		min-height: 0;
+	}
+
+	.card-left-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 1.5rem;
+	}
+
+	.header-left {
+		display: flex;
+		align-items: baseline;
+		gap: 0.125rem;
+	}
+
+	.logo {
+		font-family: 'JetBrains Mono', monospace;
+		font-weight: 800;
+		font-size: 1.25rem;
+		color: var(--foreground);
+	}
+
+	.logo-domain {
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
+	}
+
+	/* Theme dropdown in header */
+	.theme-dropdown-trigger {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.375rem 0.5rem;
+		background: var(--secondary);
+		border: 1px solid var(--border);
+		color: var(--foreground);
+		cursor: pointer;
+		font-size: 0.75rem;
+		transition:
+			background 0.2s ease,
+			border-color 0.2s ease;
+		width: 170px;
+	}
+
+	.theme-dropdown-trigger:hover {
+		border-color: var(--ring);
+	}
+
+	.trigger-swatch {
+		width: 10px;
+		height: 10px;
+		flex-shrink: 0;
+	}
+
+	.trigger-theme-name {
+		font-weight: 500;
+		white-space: nowrap;
+	}
+
+	.theme-dropdown-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		width: 100%;
+		height: 100%;
+		padding: 0 0.75rem;
+		border: none;
+		font-size: 0.8rem;
+		text-align: left;
+		cursor: pointer;
+		transition:
+			opacity 0.15s ease,
+			filter 0.15s ease;
+	}
+
+	.theme-dropdown-item:hover {
+		filter: brightness(1.3);
+	}
+
+	.theme-dropdown-item.selected {
+		font-weight: 600;
+		outline: 1px solid currentColor;
+		outline-offset: -1px;
+	}
+
+	/* Accordion */
+	.accordion-heading {
+		margin: 0;
+	}
+
+	.accordion-trigger {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 0.75rem 0;
+		background: none;
+		border: none;
+		border-top: 1px solid var(--border);
+		cursor: pointer;
+		color: var(--foreground);
+		text-align: left;
+		transition: border-color 0.3s ease;
+	}
+
+	.accordion-trigger:focus-visible,
+	.toggle-item:focus-visible,
+	.custom-checkbox:focus-visible,
+	.ec-radio:focus-visible,
+	.export-btn:focus-visible,
+	.browse-btn:focus-visible,
+	.capture-btn:focus-visible,
+	.capture-menu-item:focus-visible,
+	.stop-capture-btn:focus-visible,
+	.copy-btn:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+
+	.accordion-title {
+		font-size: 0.85rem;
+		font-weight: 500;
+		color: var(--muted-foreground);
+		transition: all 0.2s ease;
+	}
+
+	.accordion-title.large {
+		font-size: 1.125rem;
+		font-weight: 600;
+		color: var(--foreground);
+	}
+
+	.accordion-chevron {
+		transition: transform 0.2s ease;
+		color: var(--muted-foreground);
+		flex-shrink: 0;
+	}
+
+	.accordion-chevron.open {
+		transform: rotate(180deg);
+	}
+
+	.accordion-panel {
+		display: grid;
+		grid-template-rows: 0fr;
+		transition: grid-template-rows 0.3s ease;
+		min-height: 0;
+		flex: 0 0 auto;
+	}
+
+	.accordion-panel.open {
+		grid-template-rows: 1fr;
+		flex: 1 1 0px;
+	}
+
+	.accordion-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		overflow: hidden;
+		min-height: 0;
+	}
+
+	.accordion-panel.open .accordion-content {
+		padding-bottom: 0.75rem;
+	}
+
+	/* Generate panel: form fills, settings stick to bottom */
+	.generate-form {
+		flex: 1 1 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	/* Type dropdown */
+	.type-dropdown-trigger {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		width: 100%;
+		padding: 0.625rem 0.75rem;
+		background: var(--secondary);
+		border: 1px solid var(--border);
+		color: var(--foreground);
+		cursor: pointer;
+		font-size: 0.875rem;
+		transition:
+			background 0.2s ease,
+			border-color 0.2s ease;
+	}
+
+	.type-dropdown-trigger:hover {
+		border-color: var(--ring);
+	}
+
+	.type-dropdown-label {
 		font-size: 0.7rem;
 		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: var(--c-fg-muted);
-		margin-bottom: 0.5rem;
-		font-family: 'JetBrains Mono', monospace;
+		letter-spacing: 0.05em;
+		color: var(--muted-foreground);
 	}
 
-	.field-input {
+	.type-dropdown-value {
+		flex: 1;
+		font-weight: 500;
+	}
+
+	.type-dropdown-chevron {
+		transition: transform 0.15s ease;
+		color: var(--muted-foreground);
+	}
+
+	.type-dropdown-chevron.open {
+		transform: rotate(180deg);
+	}
+
+	/* Inputs */
+	.input {
 		width: 100%;
-		padding: 0.5rem 0.75rem;
-		border-radius: 0.375rem;
-		border: 1px solid var(--c-border);
-		background: var(--c-bg);
-		color: var(--c-fg);
+		padding: 0.625rem 0.75rem;
+		background: var(--secondary);
+		border: 1px solid var(--border);
+		color: var(--foreground);
+		font-size: 0.875rem;
+		font-family: inherit;
 		outline: none;
 		transition: border-color 0.15s ease;
 	}
 
-	.field-input:focus {
-		border-color: var(--c-border-focus);
+	.input:focus {
+		border-color: var(--ring);
 	}
 
-	.field-input::placeholder {
-		color: var(--c-fg-muted);
+	.input::placeholder {
+		color: var(--muted-foreground);
 	}
 
-	.color-input {
-		width: 28px;
-		height: 28px;
-		border: 1px solid var(--c-border);
-		border-radius: 0.25rem;
-		cursor: pointer;
+	.textarea {
+		resize: vertical;
+		min-height: 60px;
+		font-family: inherit;
+	}
+
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.fields {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.field-row {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 0.5rem;
+	}
+
+	.field-label {
+		margin: 0;
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--muted-foreground);
+	}
+
+	/* Toggle group (replaces native select/checkbox) */
+	.inline-options {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+
+	.toggle-group {
+		display: flex;
+		gap: 0;
+		border: 1px solid var(--border);
+	}
+
+	.toggle-item {
+		padding: 0.375rem 0.625rem;
 		background: none;
-		padding: 0;
-	}
-
-	.color-input::-webkit-color-swatch-wrapper {
-		padding: 2px;
-	}
-
-	.color-input::-webkit-color-swatch {
 		border: none;
-		border-radius: 2px;
+		border-right: 1px solid var(--border);
+		color: var(--muted-foreground);
+		font-size: 0.75rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		white-space: nowrap;
 	}
 
-	.qr-preview :global(svg) {
+	.toggle-item:last-child {
+		border-right: none;
+	}
+
+	.toggle-item:hover {
+		color: var(--foreground);
+		background: var(--accent);
+	}
+
+	.toggle-item.active {
+		background: var(--foreground);
+		color: var(--background);
+	}
+
+	/* Custom checkbox */
+	.custom-checkbox {
+		width: 18px;
+		height: 18px;
+		border: 1px solid var(--border);
+		background: none;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: var(--foreground);
+		padding: 0;
+		flex-shrink: 0;
+	}
+
+	.custom-checkbox.checked {
+		background: var(--foreground);
+		color: var(--background);
+	}
+
+	/* Settings */
+	.settings-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.swatch-dot {
+		width: 8px;
+		height: 8px;
+		flex-shrink: 0;
+	}
+
+	/* Settings row (size + style side by side) */
+	.settings-row {
+		display: flex;
+		gap: 1.25rem;
+	}
+
+	.mini-dropdown-wrapper {
+		flex: 1;
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.mini-dropdown-label {
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--muted-foreground);
+	}
+
+	.mini-dropdown-trigger {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		width: 100%;
+		padding: 0.5rem 0.625rem;
+		background: var(--secondary);
+		border: 1px solid var(--border);
+		color: var(--foreground);
+		cursor: pointer;
+		font-size: 0.8rem;
+		transition:
+			background 0.2s ease,
+			border-color 0.2s ease;
+	}
+
+	.mini-dropdown-trigger:hover {
+		border-color: var(--ring);
+	}
+
+	.mini-dropdown-value {
+		color: var(--foreground);
+		font-weight: 500;
+	}
+
+	.ratio-field {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.ratio-trigger {
+		min-width: 3rem;
+		justify-content: flex-end;
+	}
+
+	.ratio-item {
+		display: block;
+		width: 100%;
+		text-align: right;
+	}
+
+	.ratio-suffix {
+		font-size: 0.8rem;
+		font-weight: 500;
+		color: var(--muted-foreground);
+	}
+
+	.ec-radio-group {
+		display: flex;
+		gap: 0;
+		border: 1px solid var(--border);
+	}
+
+	.ec-radio {
+		flex: 1;
+		padding: 0.5rem 0;
+		background: var(--secondary);
+		border: none;
+		border-right: 1px solid var(--border);
+		color: var(--muted-foreground);
+		font-size: 0.8rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition:
+			background 0.15s ease,
+			color 0.15s ease;
+	}
+
+	.ec-radio:last-child {
+		border-right: none;
+	}
+
+	.ec-radio:hover {
+		color: var(--foreground);
+	}
+
+	.ec-radio.active {
+		background: var(--accent);
+		color: var(--foreground);
+		font-weight: 600;
+	}
+
+	.ec-pct {
+		font-size: 0.65rem;
+		font-weight: 400;
+		opacity: 0.6;
+	}
+
+	/* Export row (three buttons side by side) */
+	.export-row {
+		display: flex;
+		gap: 0.375rem;
+	}
+
+	.export-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.375rem;
+		flex: 1;
+		padding: 0.5rem;
+		background: var(--foreground);
+		color: var(--background);
+		border: none;
+		font-size: 0.75rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: opacity 0.15s ease;
+	}
+
+	.export-btn:hover {
+		opacity: 0.9;
+	}
+
+	.export-btn:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
+	}
+
+	/* Right panel (preview) */
+	.card-right {
+		display: flex;
+		flex-direction: column;
+		padding: 2rem;
+		background: var(--secondary);
+		border-left: 1px solid var(--border);
+		min-height: 100%;
+		transition:
+			background 0.3s ease,
+			border-color 0.3s ease;
+	}
+
+	.preview-qr,
+	.preview-empty {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 0;
+	}
+
+	.preview-qr :global(svg) {
 		max-width: 100%;
-		max-height: 70vh;
+		max-height: 100%;
 		height: auto;
-		filter: drop-shadow(0 4px 24px rgba(0, 0, 0, 0.2));
 	}
 
-	.controls-panel {
-		max-height: 100vh;
+	.card-right-footer {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid var(--border);
+		margin-top: 0.75rem;
 	}
 
-	@media (max-width: 1023px) {
-		.controls-panel {
+	.preview-empty-icon {
+		color: var(--muted-foreground);
+		opacity: 0.2;
+	}
+
+	/* Reader section */
+	.drop-zone {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 1.5rem;
+		border: 1px dashed var(--border);
+		text-align: center;
+		transition: all 0.15s ease;
+		cursor: default;
+	}
+
+	.drop-zone.dragging {
+		border-color: var(--foreground);
+		background: var(--accent);
+	}
+
+	.drop-icon {
+		color: var(--muted-foreground);
+		opacity: 0.5;
+	}
+
+	.drop-text {
+		margin: 0;
+		font-size: 0.85rem;
+		color: var(--muted-foreground);
+	}
+
+	.drop-hint {
+		font-size: 0.75rem;
+		color: var(--muted-foreground);
+		opacity: 0.6;
+	}
+
+	.drop-hint kbd {
+		padding: 0.125rem 0.375rem;
+		border: 1px solid var(--border);
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.65rem;
+		background: var(--secondary);
+	}
+
+	.browse-btn {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.375rem 0.75rem;
+		border: 1px solid var(--border);
+		background: var(--secondary);
+		color: var(--foreground);
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition: background 0.12s ease;
+	}
+
+	.browse-btn:hover {
+		background: var(--accent);
+	}
+
+	.browse-capture-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	/* Capture */
+	.capture-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.capture-row {
+		position: relative;
+	}
+
+	.capture-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		background: var(--secondary);
+		border: 1px solid var(--border);
+		color: var(--foreground);
+		font-size: 0.8rem;
+		cursor: pointer;
+		transition: background 0.12s ease;
+	}
+
+	.capture-btn:hover {
+		background: var(--accent);
+	}
+
+	.capture-menu {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		z-index: 50;
+		background: var(--popover);
+		border: 1px solid var(--border);
+		min-width: 140px;
+		animation: dropdown-in 0.15s ease;
+	}
+
+	.capture-menu-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		width: 100%;
+		padding: 0.5rem 0.75rem;
+		background: none;
+		border: none;
+		border-bottom: 1px solid var(--border);
+		color: var(--foreground);
+		font-size: 0.8rem;
+		cursor: pointer;
+		text-align: left;
+	}
+
+	.capture-menu-item:last-child {
+		border-bottom: none;
+	}
+
+	.capture-menu-item:hover {
+		background: var(--accent);
+	}
+
+	.webcam-preview {
+		position: relative;
+	}
+
+	.webcam-video {
+		width: 100%;
+		border: 1px solid var(--border);
+	}
+
+	.capture-status {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		font-size: 0.8rem;
+		color: var(--muted-foreground);
+		border: 1px solid var(--border);
+	}
+
+	.capture-dot {
+		width: 8px;
+		height: 8px;
+		background: #ef4444;
+		animation: pulse 1s infinite;
+	}
+
+	@keyframes pulse {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.3;
+		}
+	}
+
+	.stop-capture-btn {
+		padding: 0.25rem 0.5rem;
+		background: var(--destructive);
+		color: white;
+		border: none;
+		font-size: 0.75rem;
+		cursor: pointer;
+		margin-left: auto;
+	}
+
+	/* Reader result */
+	.reader-result {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+
+	.reader-result-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.result-text {
+		padding: 0.625rem;
+		background: var(--secondary);
+		border: 1px solid var(--border);
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 0.8rem;
+		color: var(--foreground);
+		white-space: pre-wrap;
+		word-break: break-all;
+		overflow-x: auto;
+	}
+
+	.copy-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		align-self: flex-start;
+		padding: 0.375rem 0.625rem;
+		background: var(--secondary);
+		border: 1px solid var(--border);
+		color: var(--foreground);
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+
+	.copy-btn:hover {
+		background: var(--accent);
+	}
+
+	.reader-error {
+		font-size: 0.8rem;
+		color: var(--destructive);
+	}
+
+	/* Mobile: preview on top, form below */
+	@media (max-width: 640px) {
+		.card {
+			grid-template-columns: 1fr;
+			max-width: 100%;
+			height: auto;
+		}
+
+		.card-right {
+			order: -1;
+			border-left: none;
+			border-bottom: 1px solid var(--border);
+			min-height: 200px;
+			padding: 1.5rem;
+		}
+
+		.card-left {
 			max-height: none;
+			padding: 1.5rem;
 		}
 	}
 </style>

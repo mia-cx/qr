@@ -1,0 +1,20 @@
+@use 'mixins' as *;
+
+html[data-theme='paper'] {
+	@include theme-vars(
+		$bg: #f5f0eb,
+		$bg-secondary: #ebe5de,
+		$bg-tertiary: #ddd6cc,
+		$fg: #2c2c2c,
+		$fg-secondary: #454545,
+		$fg-muted: #999088,
+		$accent: #c25b3f,
+		$accent-fg: #f5f0eb,
+		$border: #d4cdc4,
+		$border-focus: #c25b3f,
+		$qr-fg: #2c2c2c,
+		$qr-bg: #f5f0eb,
+		$error: #c25b3f,
+		$success: #5b8a3c
+	);
+}
