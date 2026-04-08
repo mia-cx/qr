@@ -2,24 +2,38 @@ import { type PayloadType, type PayloadFields, defaultPayloads, encodePayload } 
 import type { ErrorCorrectionLevel, ModuleStyle } from './generate';
 import {
 	createDefaultQrDraft,
-	loadPersistedQrDraft,
-	persistQrDraft,
+	type QRDraftStore,
+	qrDraftStore,
 	type QRDraftSnapshot
 } from './persistence';
 
-const initialDraft = loadPersistedQrDraft();
+export class QRState {
+	private isWritingToStore = false;
+	private readonly store: QRDraftStore;
 
-class QRState {
-	payloadType = $state<PayloadType>(initialDraft.payloadType);
-	payloads = $state<PayloadFields>(initialDraft.payloads);
+	payloadType = $state<PayloadType>('url');
+	payloads = $state<PayloadFields>(structuredClone(defaultPayloads));
 
-	errorCorrection = $state<ErrorCorrectionLevel>(initialDraft.errorCorrection);
-	pixelSize = $state(initialDraft.pixelSize);
-	moduleStyle = $state<ModuleStyle>(initialDraft.moduleStyle);
-	fgColor = $state(initialDraft.fgColor);
-	bgColor = $state(initialDraft.bgColor);
-	logo = $state<string | undefined>(initialDraft.logo);
-	frameText = $state(initialDraft.frameText);
+	errorCorrection = $state<ErrorCorrectionLevel>('M');
+	pixelSize = $state(6);
+	moduleStyle = $state<ModuleStyle>('square');
+	fgColor = $state('#000000');
+	bgColor = $state('#ffffff');
+	logo = $state<string | undefined>(undefined);
+	frameText = $state('');
+
+	constructor(store: QRDraftStore = qrDraftStore) {
+		this.store = store;
+		this.applySnapshot(this.store.get());
+
+		this.store.listen((snapshot) => {
+			if (this.isWritingToStore) {
+				return;
+			}
+
+			this.applySnapshot(snapshot);
+		});
+	}
 
 	get currentPayload() {
 		return this.payloads[this.payloadType];
@@ -56,8 +70,25 @@ class QRState {
 		};
 	}
 
+	private applySnapshot(snapshot: QRDraftSnapshot) {
+		this.payloadType = snapshot.payloadType;
+		this.payloads = structuredClone(snapshot.payloads);
+		this.errorCorrection = snapshot.errorCorrection;
+		this.pixelSize = snapshot.pixelSize;
+		this.moduleStyle = snapshot.moduleStyle;
+		this.fgColor = snapshot.fgColor;
+		this.bgColor = snapshot.bgColor;
+		this.logo = snapshot.logo;
+		this.frameText = snapshot.frameText;
+	}
+
 	private persist() {
-		persistQrDraft(this.snapshot);
+		this.isWritingToStore = true;
+		try {
+			this.store.set(this.snapshot);
+		} finally {
+			this.isWritingToStore = false;
+		}
 	}
 
 	setPayloadType(type: PayloadType) {
@@ -119,4 +150,8 @@ class QRState {
 	}
 }
 
-export const qrState = new QRState();
+export function createQrState(store?: QRDraftStore) {
+	return new QRState(store);
+}
+
+export const qrState = createQrState();
