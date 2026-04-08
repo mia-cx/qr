@@ -34,7 +34,7 @@
 		a.href = url;
 		a.download = filename;
 		a.click();
-		URL.revokeObjectURL(url);
+		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
 
 	function downloadVcf() {
@@ -243,7 +243,7 @@
 	</div>
 
 	<div class="result-actions">
-		<button type="button" class="action-btn" onclick={() => navigator.clipboard.writeText(raw)}>
+		<button type="button" class="action-btn" onclick={() => navigator.clipboard.writeText(raw).catch(() => {})}>
 			<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="8" height="8"/><path d="M4 10H3a1 1 0 01-1-1V3a1 1 0 011-1h6a1 1 0 011 1v1"/></svg>
 			Copy
 		</button>

@@ -41,6 +41,7 @@
 	let showCaptureMenu = $state(false);
 	let captureController = $state<{ start: () => Promise<void>; stop: () => void } | null>(null);
 	let webcamStream = $state<MediaStream | null>(null);
+	let captureGeneration = 0;
 	let webcamVideo = $state<HTMLVideoElement | undefined>(undefined);
 	let webcamScanFrame = $state<number | null>(null);
 
@@ -246,7 +247,7 @@
 		a.href = url;
 		a.download = filename;
 		a.click();
-		URL.revokeObjectURL(url);
+		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
 
 	function applyReaderResult(result: QRReadResult) {
@@ -327,10 +328,16 @@
 		showCaptureMenu = false;
 		captureMode = 'webcam';
 		isCapturing = true;
+		const generation = ++captureGeneration;
 		try {
-			webcamStream = await navigator.mediaDevices.getUserMedia({
+			const stream = await navigator.mediaDevices.getUserMedia({
 				video: { facingMode: 'environment' }
 			});
+			if (generation !== captureGeneration) {
+				stream.getTracks().forEach((t) => t.stop());
+				return;
+			}
+			webcamStream = stream;
 			await new Promise((r) => setTimeout(r, 100));
 			if (webcamVideo) {
 				webcamVideo.srcObject = webcamStream;

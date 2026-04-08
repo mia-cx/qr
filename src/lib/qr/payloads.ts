@@ -127,11 +127,11 @@ export function decodePayload(raw: string): { type: PayloadType; fields: Payload
 			return m?.[1] ?? '';
 		};
 		const parseDt = (dt: string) => {
-			// 20260421T0000 -> 2026-04-21T00:00
-			const d = dt.replace(/(\d{4})(\d{2})(\d{2})T?(\d{2})?(\d{2})?/, (_, y, mo, day, h, mi) =>
-				`${y}-${mo}-${day}T${h ?? '00'}:${mi ?? '00'}`
+			// 20260421T120000Z -> 2026-04-21T12:00
+			return dt.replace(
+				/(\d{4})(\d{2})(\d{2})T?(\d{2})?(\d{2})?(\d{2})?Z?/,
+				(_, y, mo, day, h, mi) => `${y}-${mo}-${day}T${h ?? '00'}:${mi ?? '00'}`
 			);
-			return d;
 		};
 		return {
 			type: 'calendar',
