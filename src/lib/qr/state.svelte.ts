@@ -1,5 +1,14 @@
 import { type PayloadType, type PayloadFields, defaultPayloads, encodePayload } from './payloads';
-import type { ErrorCorrectionLevel, ModuleStyle } from './generate';
+import {
+	MAX_DOT_SIZE,
+	getMinimumPixelPerfectDotSize,
+	normalizeCapStyle,
+	normalizeDotSize,
+	type ErrorCorrectionLevel,
+	type ModuleStyle,
+	type CapStyle,
+	type ConnectionMode
+} from './generate';
 import {
 	createDefaultQrDraft,
 	type QRDraftStore,
@@ -17,6 +26,9 @@ export class QRState {
 	errorCorrection = $state<ErrorCorrectionLevel>('M');
 	pixelSize = $state(6);
 	moduleStyle = $state<ModuleStyle>('square');
+	capStyle = $state<CapStyle>('square');
+	connectionMode = $state<ConnectionMode>('lines');
+	dotSize = $state(1);
 	fgColor = $state('#000000');
 	bgColor = $state('#ffffff');
 	logo = $state<string | undefined>(undefined);
@@ -49,6 +61,9 @@ export class QRState {
 			errorCorrection: this.errorCorrection,
 			pixelSize: this.pixelSize,
 			moduleStyle: this.moduleStyle,
+			capStyle: this.capStyle,
+			connectionMode: this.connectionMode,
+			dotSize: this.dotSize,
 			fgColor: this.fgColor,
 			bgColor: this.bgColor,
 			logo: this.logo,
@@ -63,6 +78,9 @@ export class QRState {
 			errorCorrection: this.errorCorrection,
 			pixelSize: this.pixelSize,
 			moduleStyle: this.moduleStyle,
+			capStyle: this.capStyle,
+			connectionMode: this.connectionMode,
+			dotSize: this.dotSize,
 			fgColor: this.fgColor,
 			bgColor: this.bgColor,
 			logo: this.logo,
@@ -76,6 +94,9 @@ export class QRState {
 		this.errorCorrection = snapshot.errorCorrection;
 		this.pixelSize = snapshot.pixelSize;
 		this.moduleStyle = snapshot.moduleStyle;
+		this.capStyle = normalizeCapStyle(snapshot.capStyle, snapshot.pixelSize);
+		this.connectionMode = snapshot.connectionMode;
+		this.dotSize = normalizeDotSize(snapshot.dotSize, snapshot.pixelSize);
 		this.fgColor = snapshot.fgColor;
 		this.bgColor = snapshot.bgColor;
 		this.logo = snapshot.logo;
@@ -132,6 +153,42 @@ export class QRState {
 
 	setPixelSize(size: number) {
 		this.pixelSize = size;
+		this.capStyle = normalizeCapStyle(this.capStyle, size);
+		this.dotSize = normalizeDotSize(this.dotSize, size);
+		this.persist();
+	}
+
+	setModuleStyle(style: ModuleStyle) {
+		this.moduleStyle = style;
+		this.persist();
+	}
+
+	setCapStyle(style: CapStyle) {
+		this.capStyle = normalizeCapStyle(style, this.pixelSize);
+		this.persist();
+	}
+
+	setConnectionMode(mode: ConnectionMode) {
+		this.connectionMode = mode;
+		this.persist();
+	}
+
+	setDotSize(size: number) {
+		const clamped = Math.min(
+			Math.max(size, getMinimumPixelPerfectDotSize(this.pixelSize)),
+			MAX_DOT_SIZE
+		);
+		this.dotSize = normalizeDotSize(clamped, this.pixelSize);
+		this.persist();
+	}
+
+	setFgColor(color: string) {
+		this.fgColor = color;
+		this.persist();
+	}
+
+	setBgColor(color: string) {
+		this.bgColor = color;
 		this.persist();
 	}
 
@@ -148,6 +205,9 @@ export class QRState {
 		this.errorCorrection = defaults.errorCorrection;
 		this.pixelSize = defaults.pixelSize;
 		this.moduleStyle = defaults.moduleStyle;
+		this.capStyle = defaults.capStyle;
+		this.connectionMode = defaults.connectionMode;
+		this.dotSize = defaults.dotSize;
 		this.fgColor = defaults.fgColor;
 		this.bgColor = defaults.bgColor;
 		this.logo = defaults.logo;

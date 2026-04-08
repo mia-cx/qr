@@ -46,6 +46,7 @@ describe('qrState', () => {
 		expect(qrState.errorCorrection).toBe('Q');
 		expect(qrState.pixelSize).toBe(12);
 		expect(qrState.moduleStyle).toBe('rounded');
+		expect(qrState.connectionMode).toBe('lines');
 		expect(qrState.fgColor).toBe('#112233');
 		expect(qrState.bgColor).toBe('#fefefe');
 		expect(qrState.frameText).toBe('hydrate me');
@@ -66,6 +67,123 @@ describe('qrState', () => {
 			},
 			errorCorrection: 'H',
 			pixelSize: 10
+		});
+	});
+
+	it('clamps dot size to the minimum supported amount before persisting', async () => {
+		const { qrState } = await import('./state.svelte');
+
+		qrState.setPixelSize(6);
+		qrState.setDotSize(0.3);
+
+		expect(qrState.dotSize).toBeCloseTo(1 / 3);
+		expect(JSON.parse(storage['qr-draft'])).toMatchObject({
+			pixelSize: 6,
+			dotSize: 1 / 3
+		});
+	});
+
+	it('snaps dot size to pixel-perfect divisions of the current pixel ratio', async () => {
+		const { qrState } = await import('./state.svelte');
+
+		qrState.setPixelSize(6);
+		qrState.setDotSize(0.7);
+
+		expect(qrState.dotSize).toBeCloseTo(2 / 3);
+		expect(JSON.parse(storage['qr-draft'])).toMatchObject({
+			pixelSize: 6,
+			dotSize: 2 / 3
+		});
+	});
+
+	it('resets dot size to 100% when the pixel ratio drops below 3', async () => {
+		const { qrState } = await import('./state.svelte');
+
+		qrState.setPixelSize(6);
+		qrState.setDotSize(2 / 3);
+		qrState.setPixelSize(2);
+
+		expect(qrState.dotSize).toBe(1);
+		expect(JSON.parse(storage['qr-draft'])).toMatchObject({
+			pixelSize: 2,
+			dotSize: 1
+		});
+	});
+
+	it('falls back to square caps when the pixel ratio drops below 8:1', async () => {
+		const { qrState } = await import('./state.svelte');
+
+		qrState.setPixelSize(10);
+		qrState.setCapStyle('circle');
+		qrState.setPixelSize(6);
+
+		expect(qrState.capStyle).toBe('square');
+		expect(JSON.parse(storage['qr-draft'])).toMatchObject({
+			pixelSize: 6,
+			capStyle: 'square'
+		});
+	});
+
+	it('rejects decorative caps below 8:1 even when explicitly selected', async () => {
+		const { qrState } = await import('./state.svelte');
+
+		qrState.setPixelSize(6);
+		qrState.setCapStyle('miter');
+
+		expect(qrState.capStyle).toBe('square');
+		expect(JSON.parse(storage['qr-draft'])).toMatchObject({
+			pixelSize: 6,
+			capStyle: 'square'
+		});
+	});
+
+	it('allows decorative caps at 8:1 and above', async () => {
+		const { qrState } = await import('./state.svelte');
+
+		qrState.setPixelSize(8);
+		qrState.setCapStyle('circle');
+
+		expect(qrState.capStyle).toBe('circle');
+		expect(JSON.parse(storage['qr-draft'])).toMatchObject({
+			pixelSize: 8,
+			capStyle: 'circle'
+		});
+	});
+
+	it('allows one-third dot size at 6:1 where it still centers cleanly', async () => {
+		const { qrState } = await import('./state.svelte');
+
+		qrState.setPixelSize(6);
+		qrState.setDotSize(1 / 3);
+
+		expect(qrState.dotSize).toBeCloseTo(1 / 3);
+		expect(JSON.parse(storage['qr-draft'])).toMatchObject({
+			pixelSize: 6,
+			dotSize: 1 / 3
+		});
+	});
+
+	it('persists the selected connection mode', async () => {
+		const { qrState } = await import('./state.svelte');
+
+		qrState.setConnectionMode('disconnected');
+
+		expect(qrState.connectionMode).toBe('disconnected');
+		expect(JSON.parse(storage['qr-draft'])).toMatchObject({
+			connectionMode: 'disconnected'
+		});
+	});
+
+	it('clamps one-third dot size requests above 6:1 back to the ratio minimum', async () => {
+		const { qrState } = await import('./state.svelte');
+
+		qrState.setPixelSize(9);
+		qrState.setDotSize(1 / 3);
+
+		expect(qrState.dotSize).toBeCloseTo(5 / 9);
+		expect(JSON.parse(storage['qr-draft'])).toMatchObject({
+			pixelSize: 9,
+			dotSize: 5 / 9
 		});
 	});
 

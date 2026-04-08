@@ -1,6 +1,15 @@
 import { persistentAtom } from '@nanostores/persistent';
 
-import type { ErrorCorrectionLevel, ModuleStyle } from './generate';
+import {
+	MAX_DOT_SIZE,
+	getMinimumPixelPerfectDotSize,
+	normalizeCapStyle,
+	normalizeDotSize,
+	type ErrorCorrectionLevel,
+	type ModuleStyle,
+	type CapStyle,
+	type ConnectionMode
+} from './generate';
 import { defaultPayloads, type PayloadFields, type PayloadType } from './payloads';
 
 export const QR_DRAFT_STORAGE_KEY = 'qr-draft';
@@ -11,6 +20,9 @@ export interface QRDraftSnapshot {
 	errorCorrection: ErrorCorrectionLevel;
 	pixelSize: number;
 	moduleStyle: ModuleStyle;
+	capStyle: CapStyle;
+	connectionMode: ConnectionMode;
+	dotSize: number;
 	fgColor: string;
 	bgColor: string;
 	logo?: string;
@@ -31,6 +43,8 @@ const PAYLOAD_TYPES: PayloadType[] = [
 ];
 const ERROR_CORRECTION_VALUES: ErrorCorrectionLevel[] = ['L', 'M', 'Q', 'H'];
 const MODULE_STYLE_VALUES: ModuleStyle[] = ['square', 'rounded', 'dots', 'diamond'];
+const CAP_STYLE_VALUES: CapStyle[] = ['square', 'circle', 'miter'];
+const CONNECTION_MODE_VALUES: ConnectionMode[] = ['disconnected', 'lines'];
 
 function getRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
@@ -135,6 +149,9 @@ export function createDefaultQrDraft(): QRDraftSnapshot {
 		errorCorrection: 'M',
 		pixelSize: 6,
 		moduleStyle: 'square',
+		capStyle: 'square',
+		connectionMode: 'lines',
+		dotSize: 1,
 		fgColor: '#000000',
 		bgColor: '#ffffff',
 		logo: undefined,
@@ -150,6 +167,21 @@ export function normalizeQrDraft(value: unknown): QRDraftSnapshot {
 		return defaults;
 	}
 
+	const pixelSize =
+		typeof record.pixelSize === 'number' &&
+		Number.isFinite(record.pixelSize) &&
+		record.pixelSize > 0
+			? record.pixelSize
+			: defaults.pixelSize;
+
+	const dotSize =
+		typeof record.dotSize === 'number' &&
+		Number.isFinite(record.dotSize) &&
+		record.dotSize >= getMinimumPixelPerfectDotSize(pixelSize) &&
+		record.dotSize <= MAX_DOT_SIZE
+			? normalizeDotSize(record.dotSize, pixelSize)
+			: defaults.dotSize;
+
 	return {
 		payloadType: readEnum(record.payloadType, PAYLOAD_TYPES, defaults.payloadType),
 		payloads: normalizePayloads(record.payloads),
@@ -158,13 +190,18 @@ export function normalizeQrDraft(value: unknown): QRDraftSnapshot {
 			ERROR_CORRECTION_VALUES,
 			defaults.errorCorrection
 		),
-		pixelSize:
-			typeof record.pixelSize === 'number' &&
-			Number.isFinite(record.pixelSize) &&
-			record.pixelSize > 0
-				? record.pixelSize
-				: defaults.pixelSize,
+		pixelSize: pixelSize,
 		moduleStyle: readEnum(record.moduleStyle, MODULE_STYLE_VALUES, defaults.moduleStyle),
+		capStyle: normalizeCapStyle(
+			readEnum(record.capStyle, CAP_STYLE_VALUES, defaults.capStyle),
+			pixelSize
+		),
+		connectionMode: readEnum(
+			record.connectionMode,
+			CONNECTION_MODE_VALUES,
+			defaults.connectionMode
+		),
+		dotSize,
 		fgColor: readString(record.fgColor, defaults.fgColor),
 		bgColor: readString(record.bgColor, defaults.bgColor),
 		logo: typeof record.logo === 'string' && record.logo ? record.logo : undefined,

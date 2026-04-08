@@ -1,3 +1,4 @@
+import qrcode from 'qrcode-generator';
 import { describe, expect, it } from 'vitest';
 
 import { __test, generateQRSvg, type QROptions } from './generate';
@@ -8,6 +9,7 @@ const baseOptions: QROptions = {
 	pixelSize: 6,
 	moduleStyle: 'square',
 	capStyle: 'square',
+	connectionMode: 'lines',
 	dotSize: 1,
 	fgColor: '#111111',
 	bgColor: '#fafafa',
@@ -81,6 +83,29 @@ describe('generateQRSvg', () => {
 			})
 		).toContain('<svg');
 	});
+
+	it('renders disconnected reduced dot-size qr codes without connector paths', () => {
+		const svg = generateQRSvg({
+			...baseOptions,
+			dotSize: 0.7,
+			moduleStyle: 'rounded',
+			connectionMode: 'disconnected'
+		});
+
+		expect(svg).not.toContain('fill="none"');
+		expect(svg).not.toContain('stroke-linecap=');
+	});
+
+	it('adds a 4-module quiet zone around the qr payload', () => {
+		const px = 6;
+		const qr = qrcode(0, baseOptions.errorCorrection);
+		qr.addData(baseOptions.data);
+		qr.make();
+		const expectedWidth = qr.getModuleCount() * px + px * 8;
+		const svg = generateQRSvg({ ...baseOptions, pixelSize: px });
+
+		expect(svg).toContain(`viewBox="0 0 ${expectedWidth} ${expectedWidth}"`);
+	});
 });
 
 describe('connector loop prevention', () => {
@@ -105,5 +130,68 @@ describe('connector loop prevention', () => {
 
 		expectNoClosedTwoByTwoLoops(matrix, edges);
 		expect(edges.size).toBeGreaterThan(0);
+	});
+});
+
+describe('full-size rounded adjacency', () => {
+	it('keeps all neighboring edges when rounded modules render at 100%', () => {
+		const matrix = [
+			[true, true],
+			[true, true]
+		];
+		const edges = __test.buildAllAdjacentEdgesFromMatrix(matrix);
+
+		expect(edges.size).toBe(4);
+		expect(edges).toEqual(
+			new Set([edgeKey(0, 0, 0, 1), edgeKey(0, 0, 1, 0), edgeKey(0, 1, 1, 1), edgeKey(1, 0, 1, 1)])
+		);
+	});
+});
+
+describe('rounded stroke tracing', () => {
+	it('traces a straight run as one open stroke path', () => {
+		const graph = __test.traceStrokeGraphFromMatrix([
+			[true, true, true],
+			[false, false, false],
+			[false, false, false]
+		]);
+
+		expect(graph.isolated).toEqual([]);
+		expect(graph.paths).toEqual([
+			{
+				points: [
+					{ row: 0, col: 0 },
+					{ row: 0, col: 1 },
+					{ row: 0, col: 2 }
+				],
+				closed: false
+			}
+		]);
+	});
+
+	it('renders rounded low-dot-size modules as stroked paths', () => {
+		const svg = generateQRSvg({
+			...baseOptions,
+			moduleStyle: 'rounded',
+			capStyle: 'circle',
+			dotSize: 0.7
+		});
+
+		expect(svg).toContain('stroke-linecap="round"');
+		expect(svg).toContain('stroke-linejoin="round"');
+		expect(svg).toContain('fill="none"');
+	});
+
+	it('renders rounded full-size modules as filled merged shapes', () => {
+		const svg = generateQRSvg({
+			...baseOptions,
+			moduleStyle: 'rounded',
+			capStyle: 'circle',
+			dotSize: 1
+		});
+
+		expect(svg).not.toContain('stroke-linecap="round"');
+		expect(svg).not.toContain('fill="none"');
+		expect(svg.match(/<path d="/g)).toHaveLength(1);
 	});
 });
