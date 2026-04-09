@@ -3,7 +3,7 @@
 	import { payloadLabels, type PayloadType } from '$lib/qr/payloads';
 	import PayloadForm from './PayloadForm.svelte';
 	import AppearanceForm from './AppearanceForm.svelte';
-	import Dropdown from './Dropdown.svelte';
+	import { Select, SelectTrigger, SelectContent, SelectItem } from '$lib/components/ui/select';
 	import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '$lib/components/ui/accordion';
 
 	interface Props {
@@ -13,9 +13,7 @@
 
 	let { activeStep, onactivestepchange }: Props = $props();
 
-	const payloadTypeItems = (Object.entries(payloadLabels) as [PayloadType, string][]).map(
-		([value, label]) => ({ value, label })
-	);
+	const payloadTypes = Object.entries(payloadLabels) as [PayloadType, string][];
 </script>
 
 <Accordion type="single" value={activeStep} onValueChange={(v) => { if (v) onactivestepchange(v as 'payload' | 'styling'); }}>
@@ -36,28 +34,21 @@
 		</AccordionTrigger>
 		<AccordionContent class="flex flex-col gap-3 pb-2">
 			<section class="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto {qrState.isOverCapacity ? '[&_input]:!border-destructive [&_textarea]:!border-destructive [&_input:focus]:!border-destructive [&_textarea:focus]:!border-destructive' : ''}" aria-label="QR generation form">
-				<Dropdown
-					items={payloadTypeItems}
+				<Select
+					type="single"
 					value={qrState.payloadType}
-					label="QR content type"
-					onselect={(v) => qrState.setPayloadType(v as PayloadType)}
+					onValueChange={(v) => { if (v) qrState.setPayloadType(v as PayloadType); }}
 				>
-					{#snippet trigger({ open, value })}
-						<span class="flex items-center gap-2 w-full py-2.5 px-3 bg-secondary border border-border text-foreground cursor-pointer text-sm transition-colors duration-200 hover:border-ring">
-							<span class="text-[0.7rem] font-semibold uppercase tracking-[0.05em] text-muted-foreground">Type</span>
-							<span class="flex-1 font-medium">{payloadLabels[value as PayloadType]}</span>
-							<svg
-								class="transition-transform duration-150 text-muted-foreground {open ? 'rotate-180' : ''}"
-								width="14"
-								height="14"
-								viewBox="0 0 14 14"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.5"><path d="M4 6l3 3 3-3" /></svg
-							>
-						</span>
-					{/snippet}
-				</Dropdown>
+					<SelectTrigger aria-label="QR content type" class="w-full py-2.5 px-3">
+						<span class="text-[0.7rem] font-semibold uppercase tracking-[0.05em] text-muted-foreground">Type</span>
+						<span class="flex-1 font-medium text-left">{payloadLabels[qrState.payloadType]}</span>
+					</SelectTrigger>
+					<SelectContent>
+						{#each payloadTypes as [type, label] (type)}
+							<SelectItem value={type} {label} />
+						{/each}
+					</SelectContent>
+				</Select>
 				<PayloadForm />
 			</section>
 		</AccordionContent>
