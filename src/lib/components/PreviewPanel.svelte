@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { qrState } from '$lib/qr/state.svelte';
 	import { downloadBlob, moveRadioSelection } from '$lib/utils';
+	import DownloadIcon from '@lucide/svelte/icons/download';
+	import CopyIcon from '@lucide/svelte/icons/copy';
 	import { generateQRSvg, generateQRCanvas, type ErrorCorrectionLevel, type QROptions } from '$lib/qr/generate';
 	import { payloadLabels } from '$lib/qr/payloads';
 	import { EC_LEVELS, EC_VALUES } from '$lib/qr/constants';
@@ -135,15 +137,15 @@
 
 <div class="flex gap-1.5 pt-2.5" role="group" aria-label="Export QR code">
 	<button type="button" class={exportBtnCls} aria-label="Download QR code as PNG" disabled={!canExport} onclick={() => exportAs('png')}>
-		<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" /></svg>
+		<DownloadIcon class="size-3.5" strokeWidth={1.5} />
 		<span class="tracking-tight">PNG</span>
 	</button>
 	<button type="button" class={exportBtnCls} aria-label="Download QR code as JPG" disabled={!canExport} onclick={() => exportAs('jpg')}>
-		<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" /></svg>
+		<DownloadIcon class="size-3.5" strokeWidth={1.5} />
 		<span class="tracking-tight">JPG</span>
 	</button>
 	<button type="button" class={exportBtnCls} aria-label="Download QR code as SVG" disabled={!canExport} onclick={() => exportAs('svg')}>
-		<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" /></svg>
+		<DownloadIcon class="size-3.5" strokeWidth={1.5} />
 		<span class="tracking-tight">SVG</span>
 	</button>
 	<button
@@ -153,9 +155,6 @@
 		disabled={!canExport}
 		onclick={copyToClipboard}
 	>
-		<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-			<rect x="4" y="4" width="8" height="8" />
-			<path d="M4 10H3a1 1 0 01-1-1V3a1 1 0 011-1h6a1 1 0 011 1v1" />
-		</svg>
+		<CopyIcon class="size-3.5" strokeWidth={1.5} aria-hidden="true" />
 	</button>
 </div>

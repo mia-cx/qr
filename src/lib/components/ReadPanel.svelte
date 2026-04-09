@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { qrState } from '$lib/qr/state.svelte';
 	import { focusCls } from '$lib/utils';
+	import FolderOpenIcon from '@lucide/svelte/icons/folder-open';
+	import CameraIcon from '@lucide/svelte/icons/camera';
+	import MonitorIcon from '@lucide/svelte/icons/monitor';
 	import { readQRFromFile, readQRFromImageData, createScreenCapture, type QRReadResult } from '$lib/qr/reader';
 	import { decodePayload } from '$lib/qr/payloads';
 	import ReaderResult from '$lib/components/ReaderResult.svelte';
@@ -109,14 +112,14 @@
 	<h4 id="reader-upload-title" class="m-0 text-sm text-muted-foreground">Drag & drop an image here</h4>
 	<div class="flex items-center gap-2">
 		<label class="{btnCls} inline-flex">
-			<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13V4a1 1 0 011-1h3l2 2h5a1 1 0 011 1v7a1 1 0 01-1 1H3a1 1 0 01-1-1z" /></svg>
+			<FolderOpenIcon class="size-3.5" strokeWidth={1.5} />
 			Browse
 			<input type="file" accept="image/*" class="sr-only" aria-label="Browse for a QR image" onchange={handleFileSelect} />
 		</label>
 		<span class="text-xs text-muted-foreground opacity-60">or</span>
 		<DropdownMenu>
 			<DropdownMenuTrigger class="{btnCls} inline-flex">
-				<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3.5" width="14" height="10" /><circle cx="8" cy="8.5" r="2.5" /><path d="M5 3.5L6 1.5h4l1 2" /></svg>
+				<CameraIcon class="size-3.5" strokeWidth={1.5} />
 				Capture
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="start">
@@ -125,7 +128,7 @@
 					Webcam
 				</DropdownMenuItem>
 				<DropdownMenuItem onclick={startScreenCapture} class="gap-2">
-					<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="12" height="9" /><path d="M5 13h4" /></svg>
+					<MonitorIcon class="size-3.5" strokeWidth={1.5} />
 					Screen
 				</DropdownMenuItem>
 			</DropdownMenuContent>

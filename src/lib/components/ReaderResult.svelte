@@ -14,6 +14,11 @@
 		type PayloadFields
 	} from '$lib/qr/payloads';
 	import { downloadBlob, focusCls } from '$lib/utils';
+	import CopyIcon from '@lucide/svelte/icons/copy';
+	import DownloadIcon from '@lucide/svelte/icons/download';
+	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
+	import EyeIcon from '@lucide/svelte/icons/eye';
+	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
 
 	interface Props {
 		raw: string;
@@ -83,9 +88,9 @@
 						<span class="flex-1 font-sans">{showPassword ? f.password : '•'.repeat(f.password.length || 8)}</span>
 						<button type="button" class="cursor-pointer text-muted-foreground flex items-center p-0.5 hover:text-foreground bg-transparent border-none {focusCls}" onclick={() => showPassword = !showPassword} aria-label={showPassword ? 'Hide password' : 'Show password'}>
 							{#if showPassword}
-								<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z"/><circle cx="8" cy="8" r="2"/></svg>
+								<EyeIcon class="size-3.5" strokeWidth={1.5} />
 							{:else}
-								<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z"/><circle cx="8" cy="8" r="2"/><path d="M3 13L13 3"/></svg>
+								<EyeOffIcon class="size-3.5" strokeWidth={1.5} />
 							{/if}
 						</button>
 					</span>
@@ -241,23 +246,23 @@
 
 	<div class="flex flex-wrap gap-1.5">
 		<button type="button" class={actionBtnCls} onclick={() => navigator.clipboard.writeText(raw).catch(() => {})}>
-			<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="8" height="8"/><path d="M4 10H3a1 1 0 01-1-1V3a1 1 0 011-1h6a1 1 0 011 1v1"/></svg>
+			<CopyIcon class="size-3.5" strokeWidth={1.5} />
 			Copy
 		</button>
 		{#if type === 'vcard'}
 			<button type="button" class={actionBtnCls} onclick={downloadVcf}>
-				<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10"/></svg>
+				<DownloadIcon class="size-3.5" strokeWidth={1.5} />
 				Save .vcf
 			</button>
 		{/if}
 		{#if type === 'calendar'}
 			<button type="button" class={actionBtnCls} onclick={downloadIcs}>
-				<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10"/></svg>
+				<DownloadIcon class="size-3.5" strokeWidth={1.5} />
 				Save .ics
 			</button>
 		{/if}
 		<button type="button" class={actionBtnCls} onclick={onuse}>
-			<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7h10M8 3l4 4-4 4"/></svg>
+			<ArrowRightIcon class="size-3.5" strokeWidth={1.5} />
 			Use as input
 		</button>
 	</div>
