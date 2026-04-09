@@ -12,16 +12,12 @@
 
 <AccordionPrimitive.Content
 	bind:ref
+	forceMount
 	data-slot="accordion-content"
-	class="data-open:animate-accordion-down data-closed:animate-accordion-up text-sm overflow-hidden"
+	class="grid overflow-hidden transition-[grid-template-rows] duration-300 data-[state=open]:grid-rows-[1fr] data-[state=closed]:grid-rows-[0fr]"
 	{...restProps}
 >
-	<div
-		class={cn(
-			"pt-0 pb-2.5 [&_a]:hover:text-foreground [&_a]:underline [&_a]:underline-offset-3 [&_p:not(:last-child)]:mb-4",
-			className
-		)}
-	>
+	<div class={cn("overflow-hidden min-h-0", className)}>
 		{@render children?.()}
 	</div>
 </AccordionPrimitive.Content>
