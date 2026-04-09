@@ -19,15 +19,11 @@
 		CONNECTION_MODE_VALUES,
 		CONNECTION_MODE_LABELS
 	} from '$lib/qr/constants';
-	import { normalizeHexColor, getCornerShapePath, getConnectionModeDots, getConnectionModePath } from '$lib/qr/helpers';
+	import { getCornerShapePath, getConnectionModeDots, getConnectionModePath } from '$lib/qr/helpers';
 	import Slider from '$lib/components/Slider.svelte';
 	import PixelRatioInput from '$lib/components/PixelRatioInput.svelte';
+	import ColorInput from '$lib/components/ColorInput.svelte';
 	import { Tooltip, TooltipContent, TooltipTrigger } from '$lib/components/ui/tooltip';
-
-	let fgColorInput = $state(qrState.fgColor.toUpperCase());
-	let bgColorInput = $state(qrState.bgColor.toUpperCase());
-	let fgColorPicker = $state<HTMLInputElement | undefined>(undefined);
-	let bgColorPicker = $state<HTMLInputElement | undefined>(undefined);
 
 	const canAdjustDotSize = $derived(isDotSizeConfigurable(qrState.pixelSize));
 	const dotSizeSliderMin = $derived(getMinimumPixelPerfectDotSize(qrState.pixelSize));
@@ -39,31 +35,6 @@
 	);
 	const connectionModeAvailabilityHint =
 		'At 100% with square modules, dot union does not change the result.';
-
-	$effect(() => { fgColorInput = qrState.fgColor.toUpperCase(); });
-	$effect(() => { bgColorInput = qrState.bgColor.toUpperCase(); });
-
-	function updateColorInput(kind: 'fg' | 'bg', value: string) {
-		if (kind === 'fg') fgColorInput = value.toUpperCase();
-		else bgColorInput = value.toUpperCase();
-		const normalized = normalizeHexColor(value);
-		if (!normalized) return;
-		if (kind === 'fg') qrState.setFgColor(normalized);
-		else qrState.setBgColor(normalized);
-	}
-
-	function commitColorInput(kind: 'fg' | 'bg') {
-		const value = kind === 'fg' ? fgColorInput : bgColorInput;
-		const fallback = kind === 'fg' ? qrState.fgColor : qrState.bgColor;
-		const normalized = normalizeHexColor(value);
-		const nextValue = normalized ?? fallback;
-		if (kind === 'fg') { fgColorInput = nextValue.toUpperCase(); if (normalized) qrState.setFgColor(nextValue); }
-		else { bgColorInput = nextValue.toUpperCase(); if (normalized) qrState.setBgColor(nextValue); }
-	}
-
-	function openColorPicker(kind: 'fg' | 'bg') {
-		(kind === 'fg' ? fgColorPicker : bgColorPicker)?.click();
-	}
 
 	function isCapStyleDisabled(capStyle: CapStyle): boolean {
 		return !isCapStyleAvailable(qrState.pixelSize, capStyle);
@@ -237,65 +208,11 @@
 	<div class="flex items-end gap-3 min-w-0 max-sm:flex-col max-sm:gap-3">
 		<div class="flex-1 min-w-0 relative flex flex-col gap-1">
 			<span class={labelCls}>Foreground</span>
-			<div class="flex items-center gap-2 h-8 px-2.5 bg-secondary border border-border transition-colors duration-200 hover:border-ring focus-within:border-ring" role="group" aria-label="Foreground color">
-				<button type="button" class="inline-flex items-center justify-center size-7 p-0 border-none bg-transparent cursor-pointer shrink-0 {focusCls}" aria-label="Open foreground color picker" onclick={() => openColorPicker('fg')}>
-					<span class="size-5 border border-border block" style={`background: ${qrState.fgColor}`}></span>
-				</button>
-				<input
-					bind:this={fgColorPicker}
-					type="color"
-					class="sr-only"
-					tabindex="-1"
-					aria-hidden="true"
-					value={qrState.fgColor}
-					oninput={(e) => updateColorInput('fg', e.currentTarget.value)}
-				/>
-				<input
-					type="text"
-					class="flex-1 min-w-0 p-0 bg-transparent border-none text-foreground text-xs font-medium font-sans uppercase outline-none placeholder:text-muted-foreground"
-					inputmode="text"
-					spellcheck="false"
-					autocapitalize="characters"
-					autocomplete="off"
-					maxlength="7"
-					aria-label="Foreground hex color"
-					value={fgColorInput}
-					oninput={(e) => updateColorInput('fg', e.currentTarget.value)}
-					onblur={() => commitColorInput('fg')}
-					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitColorInput('fg'); } }}
-				/>
-			</div>
+			<ColorInput value={qrState.fgColor} oninput={(v) => qrState.setFgColor(v)} label="Foreground" />
 		</div>
 		<div class="flex-1 min-w-0 relative flex flex-col gap-1">
 			<span class={labelCls}>Background</span>
-			<div class="flex items-center gap-2 h-8 px-2.5 bg-secondary border border-border transition-colors duration-200 hover:border-ring focus-within:border-ring" role="group" aria-label="Background color">
-				<button type="button" class="inline-flex items-center justify-center size-7 p-0 border-none bg-transparent cursor-pointer shrink-0 {focusCls}" aria-label="Open background color picker" onclick={() => openColorPicker('bg')}>
-					<span class="size-5 border border-border block" style={`background: ${qrState.bgColor}`}></span>
-				</button>
-				<input
-					bind:this={bgColorPicker}
-					type="color"
-					class="sr-only"
-					tabindex="-1"
-					aria-hidden="true"
-					value={qrState.bgColor}
-					oninput={(e) => updateColorInput('bg', e.currentTarget.value)}
-				/>
-				<input
-					type="text"
-					class="flex-1 min-w-0 p-0 bg-transparent border-none text-foreground text-xs font-medium font-sans uppercase outline-none placeholder:text-muted-foreground"
-					inputmode="text"
-					spellcheck="false"
-					autocapitalize="characters"
-					autocomplete="off"
-					maxlength="7"
-					aria-label="Background hex color"
-					value={bgColorInput}
-					oninput={(e) => updateColorInput('bg', e.currentTarget.value)}
-					onblur={() => commitColorInput('bg')}
-					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commitColorInput('bg'); } }}
-				/>
-			</div>
+			<ColorInput value={qrState.bgColor} oninput={(v) => qrState.setBgColor(v)} label="Background" />
 		</div>
 	</div>
 </div>
