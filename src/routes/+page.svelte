@@ -6,8 +6,8 @@
 	import GeneratePanel from '$lib/components/GeneratePanel.svelte';
 	import ReadPanel from '$lib/components/ReadPanel.svelte';
 	import PreviewPanel from '$lib/components/PreviewPanel.svelte';
+	import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '$lib/components/ui/accordion';
 	import { onMount } from 'svelte';
-	import { focusCls } from '$lib/utils';
 
 	type Section = 'generate' | 'read';
 
@@ -33,7 +33,9 @@
 		if (activeSection === 'read') readPanel?.handleGlobalPaste(e);
 	}
 
-	const accordionTriggerCls = `flex items-center justify-between w-full py-3 bg-transparent border-0 border-t border-border cursor-pointer text-foreground text-left transition-colors duration-300 ${focusCls}`;
+	const triggerTextCls = "font-heading font-medium transition-all duration-200";
+	const triggerActiveTextCls = "text-lg font-semibold text-foreground";
+	const triggerInactiveTextCls = "text-[0.85rem] text-muted-foreground";
 </script>
 
 <svelte:window onpaste={handlePaste} />
@@ -57,60 +59,28 @@
 		<section class="px-8 py-6 flex flex-col gap-0 overflow-hidden min-h-0 max-sm:max-h-none max-sm:px-6" aria-labelledby="controls-heading">
 			<h2 id="controls-heading" class="sr-only">QR controls</h2>
 
-			<!-- Accordion: Generate (first — no top border) -->
-			<h3 class="m-0">
-				<button
-					type="button"
-					class="{accordionTriggerCls} !border-t-0"
-					aria-expanded={activeSection === 'generate'}
-					aria-controls="generate-panel"
-					id="generate-trigger"
-					onclick={() => (activeSection = 'generate')}
-				>
-					<span class="font-heading font-medium transition-all duration-200 {activeSection === 'generate' ? 'text-lg font-semibold text-foreground' : 'text-[0.85rem] text-muted-foreground'}">Create a QR code</span>
-					<svg class="transition-transform duration-200 text-muted-foreground shrink-0 {activeSection === 'generate' ? 'rotate-180' : ''}" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
-				</button>
-			</h3>
+			<Accordion type="single" bind:value={activeSection}>
+				<AccordionItem value="generate">
+					<AccordionTrigger level={3}>
+						<span class="{triggerTextCls} {activeSection === 'generate' ? triggerActiveTextCls : triggerInactiveTextCls}">Create a QR code</span>
+					</AccordionTrigger>
+					<AccordionContent class="flex flex-col gap-3 pb-3">
+						<GeneratePanel {activeStep} onactivestepchange={(s) => (activeStep = s)} />
+					</AccordionContent>
+				</AccordionItem>
 
-			<div
-				id="generate-panel"
-				class="grid min-h-0 overflow-hidden transition-[grid-template-rows] duration-300 {activeSection === 'generate' ? 'grid-rows-[1fr] flex-[1_1_0px]' : 'grid-rows-[0fr] flex-[0_0_auto]'}"
-				role="region"
-				aria-labelledby="generate-trigger"
-			>
-				<div class="flex flex-col gap-3 overflow-hidden min-h-0 {activeSection === 'generate' ? 'h-auto pb-3' : 'h-0'}">
-					<GeneratePanel {activeStep} onactivestepchange={(s) => (activeStep = s)} />
-				</div>
-			</div>
-
-			<!-- Accordion: Read -->
-			<h3 class="m-0">
-				<button
-					type="button"
-					class={accordionTriggerCls}
-					aria-expanded={activeSection === 'read'}
-					aria-controls="read-panel"
-					id="read-trigger"
-					onclick={() => (activeSection = 'read')}
-				>
-					<span class="font-heading font-medium transition-all duration-200 {activeSection === 'read' ? 'text-lg font-semibold text-foreground' : 'text-[0.85rem] text-muted-foreground'}">Read a QR code</span>
-					<svg class="transition-transform duration-200 text-muted-foreground shrink-0 {activeSection === 'read' ? 'rotate-180' : ''}" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>
-				</button>
-			</h3>
-
-			<div
-				id="read-panel"
-				class="grid min-h-0 overflow-hidden transition-[grid-template-rows] duration-300 {activeSection === 'read' ? 'grid-rows-[1fr] flex-[1_1_0px]' : 'grid-rows-[0fr] flex-[0_0_auto]'}"
-				role="region"
-				aria-labelledby="read-trigger"
-			>
-				<div class="flex flex-col gap-3 overflow-hidden min-h-0 {activeSection === 'read' ? 'h-auto pb-3' : 'h-0'}">
-					<ReadPanel
-						bind:this={readPanel}
-						onswitchtogenerate={() => { activeSection = 'generate'; activeStep = 'payload'; }}
-					/>
-				</div>
-			</div>
+				<AccordionItem value="read">
+					<AccordionTrigger level={3}>
+						<span class="{triggerTextCls} {activeSection === 'read' ? triggerActiveTextCls : triggerInactiveTextCls}">Read a QR code</span>
+					</AccordionTrigger>
+					<AccordionContent class="flex flex-col gap-3 pb-3">
+						<ReadPanel
+							bind:this={readPanel}
+							onswitchtogenerate={() => { activeSection = 'generate'; activeStep = 'payload'; }}
+						/>
+					</AccordionContent>
+				</AccordionItem>
+			</Accordion>
 		</section>
 
 		<!-- Right: QR Preview -->
