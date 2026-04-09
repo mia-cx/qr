@@ -28,11 +28,7 @@
 	--sidebar-ring: oklch(0.556 0 0);
 }
 
-* {
-	box-sizing: border-box;
-	margin: 0;
-	padding: 0;
-}
+/* reset moved into @layer base below so Tailwind utilities can override it */
 
 html,
 body {
@@ -117,6 +113,9 @@ button {
 
 @layer base {
 	* {
+		box-sizing: border-box;
+		margin: 0;
+		padding: 0;
 		@apply border-border outline-ring/50;
 	}
 	body {
