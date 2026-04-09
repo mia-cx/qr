@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import jsQR from 'jsqr';
 
-import { constrainImageDimensions, readQRFromFile, readQRFromImageData } from './reader';
+import { constrainImageDimensions, dilateDark, readQRFromFile, readQRFromImageData } from './reader';
 
 vi.mock('jsqr', () => ({
 	default: vi.fn()
@@ -40,6 +40,20 @@ describe('readQRFromImageData', () => {
 			success: false,
 			error: 'No QR code found in image'
 		});
+		// Called twice: once raw, once with dilation fallback
+		expect(mockedJsQR).toHaveBeenCalledTimes(2);
+	});
+
+	it('falls back to dilation when raw image fails', () => {
+		mockedJsQR
+			.mockReturnValueOnce(null) // raw attempt fails
+			.mockReturnValueOnce({ data: 'dilated-read' } as ReturnType<typeof jsQR>); // dilated succeeds
+
+		expect(readQRFromImageData(imageData)).toEqual({
+			data: 'dilated-read',
+			success: true
+		});
+		expect(mockedJsQR).toHaveBeenCalledTimes(2);
 	});
 
 	it('rejects oversized files before decoding them', async () => {
@@ -52,6 +66,41 @@ describe('readQRFromImageData', () => {
 			success: false,
 			error: 'Image is too large to scan safely'
 		});
+	});
+});
+
+describe('dilateDark', () => {
+	it('expands dark pixels into their light neighbors', () => {
+		// 5x5 image: single dark pixel at center (2,2), rest white
+		const w = 5;
+		const h = 5;
+		const data = new Uint8ClampedArray(w * h * 4);
+		for (let i = 0; i < data.length; i += 4) {
+			data[i] = 255;     // R
+			data[i + 1] = 255; // G
+			data[i + 2] = 255; // B
+			data[i + 3] = 255; // A
+		}
+		// Set center pixel to black
+		const center = (2 * w + 2) * 4;
+		data[center] = 0;
+		data[center + 1] = 0;
+		data[center + 2] = 0;
+
+		const result = dilateDark({ data, width: w, height: h } as ImageData);
+
+		// Center pixel should still be dark
+		const cIdx = (2 * w + 2) * 4;
+		expect(result.data[cIdx]).toBe(0);
+
+		// Neighbors within radius=2 should be dilated to dark
+		const neighbor = (1 * w + 2) * 4; // pixel at (2,1)
+		expect(result.data[neighbor]).toBe(0);
+
+		// Corner (0,0) is exactly at distance 2√2 ≈ 2.83 from center,
+		// but box kernel includes it (both axes within radius 2)
+		const corner = 0;
+		expect(result.data[corner]).toBe(0);
 	});
 });
 
