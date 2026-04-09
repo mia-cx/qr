@@ -18,7 +18,7 @@
 	);
 </script>
 
-<Accordion type="single" bind:value={activeStep} onValueChange={(v) => { if (v) onactivestepchange(v as 'payload' | 'styling'); }}>
+<Accordion type="single" value={activeStep} onValueChange={(v) => { if (v) onactivestepchange(v as 'payload' | 'styling'); }}>
 	<AccordionItem value="payload">
 		<AccordionTrigger level={4} class="py-2">
 			<span class="font-heading text-xs font-semibold tracking-[0.03em] uppercase transition-all duration-200 {activeStep === 'payload' ? 'text-foreground' : 'text-muted-foreground'}">Payload</span>
