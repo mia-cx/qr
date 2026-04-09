@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { qrState } from '$lib/qr/state.svelte';
 	import { downloadBlob, moveRadioSelection } from '$lib/utils';
-	import { generateQRSvg, generateQRCanvas, type ErrorCorrectionLevel } from '$lib/qr/generate';
+	import { generateQRSvg, generateQRCanvas, type ErrorCorrectionLevel, type QROptions } from '$lib/qr/generate';
 	import { payloadLabels } from '$lib/qr/payloads';
 	import { EC_LEVELS, EC_VALUES } from '$lib/qr/constants';
 	import { onDestroy } from 'svelte';
@@ -19,30 +19,27 @@
 		return `${payloadLabels[qrState.payloadType]} QR preview ready. ${qrState.encodedData.length} characters encoded.`;
 	});
 
-	function getCurrentQrOptions() {
-		return {
-			data: qrState.encodedData,
-			errorCorrection: qrState.errorCorrection,
-			pixelSize: qrState.pixelSize,
-			moduleStyle: qrState.moduleStyle,
-			capStyle: qrState.capStyle,
-			connectionMode: qrState.connectionMode,
-			dotSize: qrState.dotSize,
-			fgColor: qrState.fgColor,
-			bgColor: qrState.bgColor,
-			logo: qrState.logo,
-			frameText: qrState.frameText
-		};
-	}
+	const qrOptions: QROptions = $derived({
+		data: qrState.encodedData,
+		errorCorrection: qrState.errorCorrection,
+		pixelSize: qrState.pixelSize,
+		moduleStyle: qrState.moduleStyle,
+		capStyle: qrState.capStyle,
+		connectionMode: qrState.connectionMode,
+		dotSize: qrState.dotSize,
+		fgColor: qrState.fgColor,
+		bgColor: qrState.bgColor,
+		logo: qrState.logo,
+		frameText: qrState.frameText
+	});
 
 	function getExportSvg(): string {
 		if (!canExport) return '';
-		try { return generateQRSvg(getCurrentQrOptions()); } catch { return ''; }
+		try { return generateQRSvg(qrOptions); } catch { return ''; }
 	}
 
 	async function exportAs(fmt: 'svg' | 'png' | 'jpg') {
 		if (!canExport) return;
-		const qrOptions = getCurrentQrOptions();
 		if (fmt === 'svg') {
 			const svg = getExportSvg();
 			if (!svg) return;
@@ -63,7 +60,7 @@
 	async function copyToClipboard() {
 		if (!canExport || !exportCanvas || typeof ClipboardItem === 'undefined') return;
 		try {
-			await generateQRCanvas(exportCanvas, getCurrentQrOptions());
+			await generateQRCanvas(exportCanvas, qrOptions);
 			const pngBlob = await new Promise<Blob | null>((resolve) => { exportCanvas.toBlob((blob) => resolve(blob), 'image/png'); });
 			if (!pngBlob) throw new Error('Failed to encode preview image');
 			await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
@@ -83,13 +80,13 @@
 
 	$effect(() => {
 		if (!useRasterPreview || !previewCanvas || !qrState.encodedData || qrState.isOverCapacity || typeof window === 'undefined') return;
-		const qrOptions = getCurrentQrOptions();
+		const opts = qrOptions;
 		const debounce = Math.round(Math.min(qrState.encodedByteLength / 1500, 1) * 150);
 		let canceled = false;
 		const timeout = window.setTimeout(() => {
 			void (async () => {
 				if (!canceled && previewCanvas) {
-					try { await generateQRCanvas(previewCanvas, qrOptions); } catch { /* keep previous preview */ }
+					try { await generateQRCanvas(previewCanvas, opts); } catch { /* keep previous preview */ }
 				}
 			})();
 		}, debounce);
