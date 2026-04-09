@@ -14,7 +14,6 @@
 		type ConnectionMode
 	} from '$lib/qr/generate';
 	import {
-		SUGGESTED_PIXEL_SIZES,
 		CAP_STYLE_VALUES,
 		CAP_STYLE_LABELS,
 		CONNECTION_MODE_VALUES,
@@ -22,19 +21,14 @@
 	} from '$lib/qr/constants';
 	import { normalizeHexColor, getCornerShapePath, getConnectionModeDots, getConnectionModePath } from '$lib/qr/helpers';
 	import Slider from '$lib/components/Slider.svelte';
+	import PixelRatioInput from '$lib/components/PixelRatioInput.svelte';
 	import { Tooltip, TooltipContent, TooltipTrigger } from '$lib/components/ui/tooltip';
 
-	let pixelRatioInput = $state(String(qrState.pixelSize));
-	let pixelRatioMenuOpen = $state(false);
-	let pixelRatioActiveIndex = $state(-1);
-	let pixelRatioInputEl = $state<HTMLInputElement | undefined>(undefined);
 	let fgColorInput = $state(qrState.fgColor.toUpperCase());
 	let bgColorInput = $state(qrState.bgColor.toUpperCase());
 	let fgColorPicker = $state<HTMLInputElement | undefined>(undefined);
 	let bgColorPicker = $state<HTMLInputElement | undefined>(undefined);
 
-	const pixelSizeItems = SUGGESTED_PIXEL_SIZES.map((s) => ({ value: String(s), label: String(s) }));
-	const pixelRatioMenuId = 'pixel-ratio-suggestions';
 	const canAdjustDotSize = $derived(isDotSizeConfigurable(qrState.pixelSize));
 	const dotSizeSliderMin = $derived(getMinimumPixelPerfectDotSize(qrState.pixelSize));
 	const dotSizeSliderStep = $derived(getPixelPerfectDotSizeStep(qrState.pixelSize));
@@ -46,64 +40,8 @@
 	const connectionModeAvailabilityHint =
 		'At 100% with square modules, dot union does not change the result.';
 
-	$effect(() => { pixelRatioInput = String(qrState.pixelSize); });
 	$effect(() => { fgColorInput = qrState.fgColor.toUpperCase(); });
 	$effect(() => { bgColorInput = qrState.bgColor.toUpperCase(); });
-	$effect(() => {
-		if (pixelRatioActiveIndex >= pixelSizeItems.length) {
-			pixelRatioActiveIndex = Math.max(pixelSizeItems.length - 1, -1);
-		}
-	});
-
-	function openPixelRatioMenu() { pixelRatioMenuOpen = true; pixelRatioActiveIndex = -1; }
-	function closePixelRatioMenu() { pixelRatioMenuOpen = false; pixelRatioActiveIndex = -1; }
-
-	function commitPixelRatio(rawValue = pixelRatioInput) {
-		const normalized = rawValue.replace(/\D+/g, '');
-		if (!normalized) { pixelRatioInput = String(qrState.pixelSize); closePixelRatioMenu(); return; }
-		const nextValue = Number.parseInt(normalized, 10);
-		if (!Number.isFinite(nextValue) || nextValue < 1) { pixelRatioInput = String(qrState.pixelSize); closePixelRatioMenu(); return; }
-		qrState.setPixelSize(nextValue);
-		pixelRatioInput = String(qrState.pixelSize);
-		closePixelRatioMenu();
-	}
-
-	function selectPixelRatio(value: string) { pixelRatioInput = value; commitPixelRatio(value); }
-	function handlePixelRatioInput(event: Event) {
-		pixelRatioInput = (event.currentTarget as HTMLInputElement).value.replace(/\D+/g, '');
-		pixelRatioMenuOpen = true;
-		pixelRatioActiveIndex = -1;
-	}
-
-	function handlePixelRatioKeydown(event: KeyboardEvent) {
-		const items = pixelSizeItems;
-		if (event.key === 'ArrowDown') {
-			event.preventDefault();
-			pixelRatioMenuOpen = true;
-			pixelRatioActiveIndex = pixelRatioActiveIndex < 0 ? 0 : (pixelRatioActiveIndex + 1) % items.length;
-			return;
-		}
-		if (event.key === 'ArrowUp') {
-			event.preventDefault();
-			pixelRatioMenuOpen = true;
-			pixelRatioActiveIndex = pixelRatioActiveIndex < 0 ? items.length - 1 : (pixelRatioActiveIndex - 1 + items.length) % items.length;
-			return;
-		}
-		if (event.key === 'Enter') {
-			event.preventDefault();
-			if (pixelRatioMenuOpen && pixelRatioActiveIndex >= 0 && items.length) {
-				commitPixelRatio(items[pixelRatioActiveIndex]?.value ?? pixelRatioInput);
-				return;
-			}
-			commitPixelRatio();
-			return;
-		}
-		if (event.key === 'Escape') {
-			event.preventDefault();
-			pixelRatioInput = String(qrState.pixelSize);
-			closePixelRatioMenu();
-		}
-	}
 
 	function updateColorInput(kind: 'fg' | 'bg', value: string) {
 		if (kind === 'fg') fgColorInput = value.toUpperCase();
@@ -147,79 +85,17 @@
 		qrState.setConnectionMode(moveRadioSelection(CONNECTION_MODE_VALUES, current, direction));
 	}
 
-	function handleWindowClick() {
-		if (pixelRatioMenuOpen) pixelRatioMenuOpen = false;
-	}
-
 	const labelCls = "text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground leading-5";
 	const radioCls = `flex-1 inline-flex items-center justify-center p-0 bg-secondary border-0 border-r border-border text-muted-foreground text-[0.8rem] font-medium cursor-pointer transition-colors duration-150 last:border-r-0 hover:text-foreground ${focusCls}`;
 	const radioActiveCls = "!bg-accent !text-foreground !font-semibold";
 </script>
-
-<svelte:window onclick={handleWindowClick} />
 
 <div class="flex-1 flex flex-col gap-3 min-h-0 overflow-x-hidden overflow-y-auto">
 	<!-- Pixel Ratio + Dot Size -->
 	<div class="flex items-end gap-3 min-w-0">
 		<div class="flex flex-col gap-1 relative flex-[0_0_calc((100%-0.75rem)/3)] max-w-[calc((100%-0.75rem)/3)] min-w-0 max-sm:flex-[auto] max-sm:max-w-full">
 			<span class={labelCls}>Pixel Ratio</span>
-			<div class="flex items-center gap-1 w-full" onclick={(event) => event.stopPropagation()}>
-				<div class="relative flex-1 min-w-0 z-30">
-					<label class="sr-only" for="pixel-ratio-input">Pixel ratio</label>
-					<div
-						class="flex items-center gap-1.5 w-full h-8 px-2.5 bg-secondary border border-border text-foreground cursor-pointer text-[0.8rem] transition-colors duration-200 hover:border-ring focus-within:border-ring min-w-12 justify-end"
-						onclick={() => { pixelRatioInputEl?.focus(); openPixelRatioMenu(); }}
-					>
-						<input
-							id="pixel-ratio-input"
-							bind:this={pixelRatioInputEl}
-							type="number"
-							min="1"
-							inputmode="numeric"
-							pattern="[0-9]*"
-							class="w-full min-w-0 p-0 bg-transparent border-none text-foreground font-inherit font-medium text-right appearance-textfield outline-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-							role="combobox"
-							aria-label="Pixel ratio"
-							aria-expanded={pixelRatioMenuOpen}
-							aria-controls={pixelRatioMenuId}
-							aria-activedescendant={pixelRatioMenuOpen && pixelRatioActiveIndex >= 0 && pixelSizeItems[pixelRatioActiveIndex]
-								? `${pixelRatioMenuId}-${pixelSizeItems[pixelRatioActiveIndex].value}` : undefined}
-							autocomplete="off"
-							value={pixelRatioInput}
-							onfocus={openPixelRatioMenu}
-							oninput={handlePixelRatioInput}
-							onkeydown={handlePixelRatioKeydown}
-							onblur={() => commitPixelRatio()}
-						/>
-					</div>
-					{#if pixelRatioMenuOpen && pixelSizeItems.length}
-						<div
-							id={pixelRatioMenuId}
-							class="absolute top-[calc(100%+0.25rem)] left-0 z-20 min-w-full bg-popover border border-border overflow-hidden shadow-[0_8px_24px_rgb(0_0_0/0.18)]"
-							role="listbox"
-							aria-label="Suggested pixel ratios"
-							onpointerdown={(event) => { event.preventDefault(); event.stopPropagation(); }}
-							onclick={(event) => event.stopPropagation()}
-						>
-							{#each pixelSizeItems as item, index (item.value)}
-								<button
-									type="button"
-									id={`${pixelRatioMenuId}-${item.value}`}
-									class="block w-full p-0 bg-transparent border-none text-foreground cursor-pointer text-inherit hover:bg-accent {index === pixelRatioActiveIndex ? 'bg-accent' : ''}"
-									role="option"
-									aria-selected={index === pixelRatioActiveIndex}
-									onmouseenter={() => { pixelRatioActiveIndex = index; }}
-									onpointerdown={(event) => { event.preventDefault(); event.stopPropagation(); }}
-									onclick={(event) => { event.stopPropagation(); selectPixelRatio(item.value); }}
-								>
-									<span class="flex items-center justify-end w-full h-full px-3 text-right">{item.label}</span>
-								</button>
-							{/each}
-						</div>
-					{/if}
-				</div>
-				<span class="text-[0.8rem] font-medium text-muted-foreground">&nbsp;:&nbsp;1</span>
-			</div>
+			<PixelRatioInput value={qrState.pixelSize} oninput={(v) => qrState.setPixelSize(v)} />
 		</div>
 
 		<div class="flex-1 min-w-0 relative flex flex-col gap-1">
