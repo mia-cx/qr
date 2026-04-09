@@ -1,6 +1,7 @@
 import { type PayloadType, type PayloadFields, defaultPayloads, encodePayload } from './payloads';
 import {
 	MAX_DOT_SIZE,
+	QR_BYTE_CAPACITY,
 	getMinimumPixelPerfectDotSize,
 	normalizeCapStyle,
 	normalizeDotSize,
@@ -20,7 +21,7 @@ export class QRState {
 	private isWritingToStore = false;
 	private readonly store: QRDraftStore;
 
-	payloadType = $state<PayloadType>('url');
+	payloadType = $state<PayloadType>('text');
 	payloads = $state<PayloadFields>(structuredClone(defaultPayloads));
 
 	errorCorrection = $state<ErrorCorrectionLevel>('M');
@@ -53,6 +54,18 @@ export class QRState {
 
 	get encodedData(): string {
 		return encodePayload(this.payloadType, this.payloads[this.payloadType]);
+	}
+
+	get encodedByteLength(): number {
+		return new TextEncoder().encode(this.encodedData).length;
+	}
+
+	get maxBytes(): number {
+		return QR_BYTE_CAPACITY[this.errorCorrection];
+	}
+
+	get isOverCapacity(): boolean {
+		return this.encodedByteLength > this.maxBytes;
 	}
 
 	getCurrentQrOptions() {

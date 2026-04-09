@@ -96,6 +96,70 @@ describe('generateQRSvg', () => {
 		expect(svg).not.toContain('stroke-linecap=');
 	});
 
+	it('renders disconnected rounded-corner modules as circles', () => {
+		const svg = generateQRSvg({
+			...baseOptions,
+			moduleStyle: 'square',
+			capStyle: 'circle',
+			connectionMode: 'disconnected',
+			dotSize: 0.7
+		});
+
+		expect(svg).toContain('<circle');
+	});
+
+	it('renders disconnected miter-corner dots as octagons instead of circles', () => {
+		const svg = generateQRSvg({
+			...baseOptions,
+			moduleStyle: 'dots',
+			capStyle: 'miter',
+			connectionMode: 'disconnected',
+			dotSize: 0.7
+		});
+
+		expect(svg).not.toContain('<circle');
+		expect(svg).toContain('<path d="');
+	});
+
+	it('renders full-size rounded modules differently for lines and disconnected modes', () => {
+		const connected = generateQRSvg({
+			...baseOptions,
+			moduleStyle: 'rounded',
+			capStyle: 'circle',
+			connectionMode: 'lines',
+			dotSize: 1
+		});
+		const disconnected = generateQRSvg({
+			...baseOptions,
+			moduleStyle: 'rounded',
+			capStyle: 'circle',
+			connectionMode: 'disconnected',
+			dotSize: 1
+		});
+
+		expect(connected).not.toEqual(disconnected);
+		expect(connected.match(/<path d="/g)).toHaveLength(1);
+		expect(disconnected).toContain('<circle');
+	});
+
+	it('renders full-size dot modules with connectors when lines mode is enabled', () => {
+		const connected = generateQRSvg({
+			...baseOptions,
+			moduleStyle: 'dots',
+			connectionMode: 'lines',
+			dotSize: 1
+		});
+		const disconnected = generateQRSvg({
+			...baseOptions,
+			moduleStyle: 'dots',
+			connectionMode: 'disconnected',
+			dotSize: 1
+		});
+
+		expect(connected).toContain('<path d="');
+		expect(disconnected).not.toContain('<path d="');
+	});
+
 	it('adds a 4-module quiet zone around the qr payload', () => {
 		const px = 6;
 		const qr = qrcode(0, baseOptions.errorCorrection);
@@ -193,5 +257,14 @@ describe('rounded stroke tracing', () => {
 		expect(svg).not.toContain('stroke-linecap="round"');
 		expect(svg).not.toContain('fill="none"');
 		expect(svg.match(/<path d="/g)).toHaveLength(1);
+	});
+});
+
+describe('connection mode configurability', () => {
+	it('is only irrelevant for full-size square modules with square corners', () => {
+		expect(__test.isConnectionModeConfigurable('square', 'square', 1)).toBe(false);
+		expect(__test.isConnectionModeConfigurable('square', 'circle', 1)).toBe(true);
+		expect(__test.isConnectionModeConfigurable('rounded', 'square', 1)).toBe(true);
+		expect(__test.isConnectionModeConfigurable('square', 'square', 0.5)).toBe(true);
 	});
 });

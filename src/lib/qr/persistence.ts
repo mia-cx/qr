@@ -144,7 +144,7 @@ function normalizePayloads(value: unknown): PayloadFields {
 
 export function createDefaultQrDraft(): QRDraftSnapshot {
 	return {
-		payloadType: 'url',
+		payloadType: 'text',
 		payloads: cloneDefaultPayloads(),
 		errorCorrection: 'M',
 		pixelSize: 6,

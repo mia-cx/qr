@@ -5,6 +5,14 @@ export type ModuleStyle = 'square' | 'rounded' | 'dots' | 'diamond';
 export type CapStyle = 'square' | 'circle' | 'miter';
 export type ConnectionMode = 'disconnected' | 'lines';
 
+/** Max byte-mode capacity at version 40 per EC level (QR spec). */
+export const QR_BYTE_CAPACITY: Record<ErrorCorrectionLevel, number> = {
+	L: 2953,
+	M: 2331,
+	Q: 1663,
+	H: 1273
+};
+
 export const MIN_DOT_SIZE = 1 / 2;
 export const MAX_DOT_SIZE = 1;
 export const MIN_PIXEL_SIZE_FOR_CUSTOM_DOTS = 3;
@@ -51,6 +59,14 @@ export function normalizeDotSize(dotSize: number, pixelSize: number): number {
 	return Math.round(clamped * pixelSize) / pixelSize;
 }
 
+export function isConnectionModeConfigurable(
+	moduleStyle: ModuleStyle,
+	capStyle: CapStyle,
+	dotSize: number
+): boolean {
+	return dotSize < 1 || moduleStyle !== 'square' || capStyle !== 'square';
+}
+
 export interface QROptions {
 	data: string;
 	errorCorrection: ErrorCorrectionLevel;
@@ -76,6 +92,13 @@ interface Adj {
 	bottom: boolean;
 	left: boolean;
 }
+
+const DISCONNECTED_ADJ: Adj = {
+	top: false,
+	right: false,
+	bottom: false,
+	left: false
+};
 
 // ---------------------------------------------------------------------------
 // QR data
@@ -485,6 +508,13 @@ export const __test = {
 			(row, col) => matrix[row]?.[col] ?? false,
 			preventClosedLoops
 		);
+	},
+	isConnectionModeConfigurable(
+		moduleStyle: ModuleStyle,
+		capStyle: CapStyle,
+		dotSize: number
+	): boolean {
+		return isConnectionModeConfigurable(moduleStyle, capStyle, dotSize);
 	}
 };
 
@@ -544,6 +574,15 @@ function miteredRectPath(
 
 function rectPath(x: number, y: number, w: number, h: number): string {
 	return `M${x},${y}H${x + w}V${y + h}H${x}Z`;
+}
+
+function octagonPath(x: number, y: number, s: number): string {
+	const cut = s * 0.35;
+	return miteredRectPath(x, y, s, s, [cut, cut, cut, cut]);
+}
+
+function isStandaloneModule(adj: Adj): boolean {
+	return !adj.top && !adj.right && !adj.bottom && !adj.left;
 }
 
 function cappedRectPathData(
@@ -693,6 +732,25 @@ function cappedRectSvg(
 	return `<path d="${cappedRectPathData(x, y, s, capStyle, moduleStyle, adj)}"/>`;
 }
 
+function drawStandaloneModuleSvg(
+	x: number,
+	y: number,
+	s: number,
+	capStyle: CapStyle,
+	moduleStyle: ModuleStyle
+): string | null {
+	if (capStyle === 'circle') {
+		const radius = moduleStyle === 'dots' ? s * 0.45 : s / 2;
+		return `<circle cx="${x + s / 2}" cy="${y + s / 2}" r="${radius}"/>`;
+	}
+
+	if (capStyle === 'miter') {
+		return `<path d="${octagonPath(x, y, s)}"/>`;
+	}
+
+	return null;
+}
+
 function drawModuleSvg(
 	x: number,
 	y: number,
@@ -706,6 +764,11 @@ function drawModuleSvg(
 	const off = (px - s) / 2;
 	const mx = x + off;
 	const my = y + off;
+
+	if (isStandaloneModule(adj)) {
+		const standaloneShape = drawStandaloneModuleSvg(mx, my, s, capStyle, moduleStyle);
+		if (standaloneShape) return standaloneShape;
+	}
 
 	switch (moduleStyle) {
 		case 'square':
@@ -755,6 +818,32 @@ function cappedRectCanvas(
 	ctx.fill();
 }
 
+function drawStandaloneModuleCanvas(
+	ctx: CanvasRenderingContext2D,
+	x: number,
+	y: number,
+	s: number,
+	capStyle: CapStyle,
+	moduleStyle: ModuleStyle
+): boolean {
+	if (capStyle === 'circle') {
+		const radius = moduleStyle === 'dots' ? Math.max(Math.round(s * 0.45), 1) : s / 2;
+		ctx.beginPath();
+		ctx.arc(x + s / 2, y + s / 2, radius, 0, Math.PI * 2);
+		ctx.fill();
+		return true;
+	}
+
+	if (capStyle === 'miter') {
+		ctx.beginPath();
+		appendCappedRectCanvasPath(ctx, x, y, s, 'miter', 'square', DISCONNECTED_ADJ);
+		ctx.fill();
+		return true;
+	}
+
+	return false;
+}
+
 function drawModuleCanvas(
 	ctx: CanvasRenderingContext2D,
 	x: number,
@@ -774,6 +863,13 @@ function drawModuleCanvas(
 	// Too small for shape detail — just fill the pixel(s)
 	if (s <= 2) {
 		ctx.fillRect(mx, my, s, s);
+		return;
+	}
+
+	if (
+		isStandaloneModule(adj) &&
+		drawStandaloneModuleCanvas(ctx, mx, my, s, capStyle, moduleStyle)
+	) {
 		return;
 	}
 
@@ -838,6 +934,18 @@ function shouldTraceStrokePaths(
 	connectionMode: ConnectionMode
 ): boolean {
 	return connectionMode === 'lines' && moduleStyle === 'rounded' && dotSize < 1;
+}
+
+function shouldUseFullAdjacencyConnectors(
+	moduleStyle: ModuleStyle,
+	dotSize: number,
+	connectionMode: ConnectionMode
+): boolean {
+	return (
+		connectionMode === 'lines' &&
+		dotSize >= 1 &&
+		(moduleStyle === 'dots' || moduleStyle === 'diamond')
+	);
 }
 
 function getStrokeLineCap(capStyle: CapStyle): CanvasLineCap {
@@ -910,8 +1018,14 @@ function renderModules(
 ): void {
 	const needsConnectors = connectionMode === 'lines' && dotSize < 1;
 	const useStrokePaths = shouldTraceStrokePaths(moduleStyle, dotSize, connectionMode);
-	const useFullAdjacencyConnectors =
-		connectionMode === 'lines' && moduleStyle === 'rounded' && dotSize >= 1;
+	const useFullAdjacencyConnectors = shouldUseFullAdjacencyConnectors(
+		moduleStyle,
+		dotSize,
+		connectionMode
+	);
+	const useDisconnectedAdjacency =
+		connectionMode === 'disconnected' &&
+		isConnectionModeConfigurable(moduleStyle, capStyle, dotSize);
 
 	if (useStrokePaths) {
 		const strokeGraph = getStrokeGraph(cacheKey, count, isDark, needsConnectors);
@@ -970,6 +1084,8 @@ function renderModules(
 					bottom: edges.has(edgeKey(row, col, row + 1, col)),
 					left: edges.has(edgeKey(row, col - 1, row, col))
 				};
+			} else if (useDisconnectedAdjacency) {
+				adj = DISCONNECTED_ADJ;
 			} else {
 				adj = getAdj(row, col, count, isDark);
 			}
@@ -1180,7 +1296,8 @@ export async function generateQRCanvas(
 
 	canvas.width = width;
 	canvas.height = height;
-	const ctx = canvas.getContext('2d')!;
+	const ctx = canvas.getContext('2d', { colorSpace: 'srgb' })!;
+	ctx.imageSmoothingEnabled = false;
 
 	ctx.fillStyle = options.bgColor;
 	ctx.fillRect(0, 0, width, height);
