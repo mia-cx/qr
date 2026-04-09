@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { qrState } from '$lib/qr/state.svelte';
-	import { moveRadioSelection } from '$lib/utils';
+	import { downloadBlob, moveRadioSelection } from '$lib/utils';
 	import { generateQRSvg, generateQRCanvas, type ErrorCorrectionLevel } from '$lib/qr/generate';
 	import { payloadLabels } from '$lib/qr/payloads';
 	import { EC_LEVELS, EC_VALUES } from '$lib/qr/constants';
@@ -46,12 +46,12 @@
 		if (fmt === 'svg') {
 			const svg = getExportSvg();
 			if (!svg) return;
-			download(new Blob([svg], { type: 'image/svg+xml' }), 'qr.svg');
+			downloadBlob(new Blob([svg], { type: 'image/svg+xml' }), 'qr.svg');
 		} else {
 			if (!exportCanvas) return;
 			try { await generateQRCanvas(exportCanvas, qrOptions); } catch { return; }
 			const mimeType = fmt === 'png' ? 'image/png' : 'image/jpeg';
-			exportCanvas.toBlob((blob) => { if (blob) download(blob, `qr.${fmt}`); }, mimeType, 0.95);
+			exportCanvas.toBlob((blob) => { if (blob) downloadBlob(blob, `qr.${fmt}`); }, mimeType, 0.95);
 		}
 	}
 
@@ -72,14 +72,6 @@
 		scheduleCopyStatusReset();
 	}
 
-	function download(blob: Blob, filename: string) {
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = filename;
-		a.click();
-		setTimeout(() => URL.revokeObjectURL(url), 1000);
-	}
 
 
 	function handleErrorCorrectionKeydown(e: KeyboardEvent, current: ErrorCorrectionLevel) {

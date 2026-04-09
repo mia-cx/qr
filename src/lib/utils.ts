@@ -12,6 +12,15 @@ export type WithoutChildren<T> = T extends { children?: any } ? Omit<T, "childre
 export type WithoutChildrenOrChild<T> = WithoutChildren<WithoutChild<T>>;
 export type WithElementRef<T, U extends HTMLElement = HTMLElement> = T & { ref?: U | null };
 
+export function downloadBlob(blob: Blob, filename: string): void {
+	const url = URL.createObjectURL(blob);
+	const a = document.createElement("a");
+	a.href = url;
+	a.download = filename;
+	a.click();
+	setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export const focusCls =
 	"focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2";
 

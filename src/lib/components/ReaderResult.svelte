@@ -13,6 +13,7 @@
 		type PayloadType,
 		type PayloadFields
 	} from '$lib/qr/payloads';
+	import { downloadBlob } from '$lib/utils';
 
 	interface Props {
 		raw: string;
@@ -27,33 +28,21 @@
 	const type = $derived(decoded.type);
 	const fields = $derived(decoded.fields);
 
-	function downloadFile(filename: string, content: string, mime: string) {
-		const blob = new Blob([content], { type: mime });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = filename;
-		a.click();
-		setTimeout(() => URL.revokeObjectURL(url), 1000);
-	}
-
 	function downloadVcf() {
 		const f = fields as PayloadFields['vcard'];
 		const name = `${f.firstName}_${f.lastName}`.replace(/\s+/g, '_') || 'contact';
-		downloadFile(
-			`${name}.vcf`,
-			normalizeLineEndingsForFile(encodeVcardPayload(f)),
-			'text/vcard'
+		downloadBlob(
+			new Blob([normalizeLineEndingsForFile(encodeVcardPayload(f))], { type: 'text/vcard' }),
+			`${name}.vcf`
 		);
 	}
 
 	function downloadIcs() {
 		const f = fields as PayloadFields['calendar'];
 		const name = f.title.replace(/\s+/g, '_') || 'event';
-		downloadFile(
-			`${name}.ics`,
-			normalizeLineEndingsForFile(encodeCalendarPayload(f)),
-			'text/calendar'
+		downloadBlob(
+			new Blob([normalizeLineEndingsForFile(encodeCalendarPayload(f))], { type: 'text/calendar' }),
+			`${name}.ics`
 		);
 	}
 </script>
