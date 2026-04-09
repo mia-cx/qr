@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { qrState } from '$lib/qr/state.svelte';
+	import { moveRadioSelection } from '$lib/utils';
 	import {
 		MIN_PIXEL_SIZE_FOR_CUSTOM_DOTS,
 		MIN_PIXEL_SIZE_FOR_DECORATIVE_CAPS,
@@ -130,10 +131,6 @@
 		return !isCapStyleAvailable(qrState.pixelSize, capStyle);
 	}
 
-	function moveRadioSelection<T extends string>(values: readonly T[], current: T, direction: 1 | -1) {
-		const currentIndex = values.indexOf(current);
-		return values[(currentIndex + direction + values.length) % values.length];
-	}
 
 	function handleCapStyleKeydown(e: KeyboardEvent, current: CapStyle) {
 		if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(e.key)) return;
