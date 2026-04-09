@@ -12,6 +12,9 @@ export type WithoutChildren<T> = T extends { children?: any } ? Omit<T, "childre
 export type WithoutChildrenOrChild<T> = WithoutChildren<WithoutChild<T>>;
 export type WithElementRef<T, U extends HTMLElement = HTMLElement> = T & { ref?: U | null };
 
+export const focusCls =
+	"focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2";
+
 export function moveRadioSelection<T extends string>(
 	values: readonly T[],
 	current: T,

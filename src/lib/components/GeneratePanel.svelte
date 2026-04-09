@@ -4,6 +4,7 @@
 	import PayloadForm from './PayloadForm.svelte';
 	import AppearanceForm from './AppearanceForm.svelte';
 	import Dropdown from './Dropdown.svelte';
+	import { focusCls } from '$lib/utils';
 
 	interface Props {
 		activeStep: 'payload' | 'styling';
@@ -16,7 +17,6 @@
 		([value, label]) => ({ value, label })
 	);
 
-	const focusCls = "focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2";
 	const subAccordionTriggerCls = `flex items-center justify-between w-full py-2 bg-transparent border-0 border-t border-border cursor-pointer text-foreground text-left transition-colors duration-300 ${focusCls}`;
 </script>
 

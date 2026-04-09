@@ -7,6 +7,7 @@
 	import ReadPanel from '$lib/components/ReadPanel.svelte';
 	import PreviewPanel from '$lib/components/PreviewPanel.svelte';
 	import { onMount } from 'svelte';
+	import { focusCls } from '$lib/utils';
 
 	type Section = 'generate' | 'read';
 
@@ -32,7 +33,6 @@
 		if (activeSection === 'read') readPanel?.handleGlobalPaste(e);
 	}
 
-	const focusCls = "focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2";
 	const accordionTriggerCls = `flex items-center justify-between w-full py-3 bg-transparent border-0 border-t border-border cursor-pointer text-foreground text-left transition-colors duration-300 ${focusCls}`;
 </script>
 

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { qrState } from '$lib/qr/state.svelte';
+	import { focusCls } from '$lib/utils';
 	import { readQRFromFile, readQRFromImageData, createScreenCapture, type QRReadResult } from '$lib/qr/reader';
 	import { decodePayload } from '$lib/qr/payloads';
 	import ReaderResult from '$lib/components/ReaderResult.svelte';
@@ -95,7 +96,6 @@
 
 	onDestroy(stopCapture);
 
-	const focusCls = "focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2";
 	const btnCls = `flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border text-foreground text-sm cursor-pointer transition-colors duration-150 hover:bg-accent ${focusCls}`;
 </script>
 

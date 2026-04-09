@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { qrState } from '$lib/qr/state.svelte';
-	import { moveRadioSelection } from '$lib/utils';
+	import { focusCls, moveRadioSelection } from '$lib/utils';
 	import {
 		MIN_PIXEL_SIZE_FOR_CUSTOM_DOTS,
 		MIN_PIXEL_SIZE_FOR_DECORATIVE_CAPS,
@@ -151,7 +151,6 @@
 		if (pixelRatioMenuOpen) pixelRatioMenuOpen = false;
 	}
 
-	const focusCls = "focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2";
 	const labelCls = "text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground leading-5";
 	const radioCls = `flex-1 inline-flex items-center justify-center p-0 bg-secondary border-0 border-r border-border text-muted-foreground text-[0.8rem] font-medium cursor-pointer transition-colors duration-150 last:border-r-0 hover:text-foreground ${focusCls}`;
 	const radioActiveCls = "!bg-accent !text-foreground !font-semibold";
