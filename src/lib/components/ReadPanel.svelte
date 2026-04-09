@@ -4,6 +4,7 @@
 	import { readQRFromFile, readQRFromImageData, createScreenCapture, type QRReadResult } from '$lib/qr/reader';
 	import { decodePayload } from '$lib/qr/payloads';
 	import ReaderResult from '$lib/components/ReaderResult.svelte';
+	import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '$lib/components/ui/dropdown-menu';
 	import { onDestroy } from 'svelte';
 
 	interface Props { onswitchtogenerate: () => void; }
@@ -14,7 +15,6 @@
 	let isDragging = $state(false);
 	let isCapturing = $state(false);
 	let captureMode = $state<'webcam' | 'screen' | null>(null);
-	let showCaptureMenu = $state(false);
 	let captureController = $state<{ start: () => Promise<void>; stop: () => void } | null>(null);
 	let webcamStream = $state<MediaStream | null>(null);
 	let captureGeneration = 0;
@@ -49,7 +49,7 @@
 	}
 
 	async function startWebcam() {
-		stopCapture(); resetReaderState(); showCaptureMenu = false; captureMode = 'webcam'; isCapturing = true;
+		stopCapture(); resetReaderState(); captureMode = 'webcam'; isCapturing = true;
 		const generation = ++captureGeneration;
 		try {
 			const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
@@ -74,7 +74,7 @@
 	}
 
 	function startScreenCapture() {
-		stopCapture(); resetReaderState(); showCaptureMenu = false; captureMode = 'screen'; isCapturing = true;
+		stopCapture(); resetReaderState(); captureMode = 'screen'; isCapturing = true;
 		const controller = createScreenCapture(
 			(imageData: ImageData) => { const result = readQRFromImageData(imageData); if (result.success) { applyReaderResult(result); stopCapture(); } },
 			(err: string) => { readerError = err; stopCapture(); }
@@ -89,17 +89,10 @@
 		isCapturing = false; captureMode = null;
 	}
 
-	function handleCaptureMenuTriggerKeydown(e: KeyboardEvent) {
-		if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showCaptureMenu = true; return; }
-		if (e.key === 'Escape') showCaptureMenu = false;
-	}
-
 	onDestroy(stopCapture);
 
 	const btnCls = `flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border text-foreground text-sm cursor-pointer transition-colors duration-150 hover:bg-accent ${focusCls}`;
 </script>
-
-<svelte:window onclick={() => { if (showCaptureMenu) showCaptureMenu = false; }} />
 
 <section
 	class="flex flex-col items-center gap-2 p-6 border border-dashed border-border text-center transition-all duration-150 cursor-default {isDragging ? '!border-foreground bg-accent' : ''}"
@@ -121,32 +114,22 @@
 			<input type="file" accept="image/*" class="sr-only" aria-label="Browse for a QR image" onchange={handleFileSelect} />
 		</label>
 		<span class="text-xs text-muted-foreground opacity-60">or</span>
-		<div class="relative">
-			<button
-				type="button"
-				class={btnCls}
-				aria-haspopup="menu"
-				aria-expanded={showCaptureMenu}
-				aria-controls="capture-menu"
-				onclick={(e) => { e.stopPropagation(); showCaptureMenu = !showCaptureMenu; }}
-				onkeydown={handleCaptureMenuTriggerKeydown}
-			>
+		<DropdownMenu>
+			<DropdownMenuTrigger class="{btnCls} inline-flex">
 				<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="3.5" width="14" height="10" /><circle cx="8" cy="8.5" r="2.5" /><path d="M5 3.5L6 1.5h4l1 2" /></svg>
 				Capture
-			</button>
-			{#if showCaptureMenu}
-				<div id="capture-menu" class="absolute top-full left-0 z-50 bg-popover border border-border min-w-[140px]" role="menu" aria-label="Capture source" tabindex="-1" onpointerdown={(e) => e.stopPropagation()}>
-					<button type="button" class="flex items-center gap-2 w-full px-3 py-2 bg-transparent border-0 border-b border-border text-foreground text-sm cursor-pointer text-left hover:bg-accent {focusCls}" role="menuitem" onclick={startWebcam}>
-						<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5" /><circle cx="7" cy="7" r="2" /></svg>
-						Webcam
-					</button>
-					<button type="button" class="flex items-center gap-2 w-full px-3 py-2 bg-transparent border-0 text-foreground text-sm cursor-pointer text-left hover:bg-accent {focusCls}" role="menuitem" onclick={startScreenCapture}>
-						<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="12" height="9" /><path d="M5 13h4" /></svg>
-						Screen
-					</button>
-				</div>
-			{/if}
-		</div>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="start">
+				<DropdownMenuItem onclick={startWebcam} class="gap-2">
+					<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="7" cy="7" r="5" /><circle cx="7" cy="7" r="2" /></svg>
+					Webcam
+				</DropdownMenuItem>
+				<DropdownMenuItem onclick={startScreenCapture} class="gap-2">
+					<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="12" height="9" /><path d="M5 13h4" /></svg>
+					Screen
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	</div>
 	<p id="reader-upload-help" class="text-xs text-muted-foreground opacity-60">Paste from clipboard with <kbd class="px-1.5 py-0.5 border border-border font-sans text-[0.65rem] bg-secondary">Cmd+V</kbd></p>
 </section>
