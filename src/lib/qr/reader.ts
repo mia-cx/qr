@@ -1,7 +1,10 @@
 import jsQR from 'jsqr';
+import { centerSampleQR } from './grid-sampler';
 
 const MAX_INPUT_FILE_BYTES = 12 * 1024 * 1024;
 const MAX_IMAGE_PIXELS = 4_000_000;
+
+const JSQR_OPTIONS = { inversionAttempts: 'attemptBoth' as const };
 
 export interface QRReadResult {
 	data: string;
@@ -10,18 +13,27 @@ export interface QRReadResult {
 }
 
 export function readQRFromImageData(imageData: ImageData): QRReadResult {
-	const result = jsQR(imageData.data, imageData.width, imageData.height);
+	// Strategy 1: raw image with inversion support
+	const result = jsQR(imageData.data, imageData.width, imageData.height, JSQR_OPTIONS);
 	if (result) {
 		return { data: result.data, success: true };
 	}
 
-	// Fallback: dilate dark regions so sub-cell dots fill their module.
-	// This helps jsQR read QR codes rendered with small dot sizes where
-	// the gap between dots confuses the binarizer.
+	// Strategy 2: dilate dark regions so sub-cell dots fill their module
 	const dilated = dilateDark(imageData);
-	const retryResult = jsQR(dilated.data, dilated.width, dilated.height);
-	if (retryResult) {
-		return { data: retryResult.data, success: true };
+	const dilatedResult = jsQR(dilated.data, dilated.width, dilated.height, JSQR_OPTIONS);
+	if (dilatedResult) {
+		return { data: dilatedResult.data, success: true };
+	}
+
+	// Strategy 3: custom grid detection + center-of-module sampling
+	// Bypasses jsQR's binarizer entirely — works for small dots and inverted codes
+	const sampled = centerSampleQR(imageData);
+	if (sampled) {
+		const sampledResult = jsQR(sampled.data, sampled.width, sampled.height, JSQR_OPTIONS);
+		if (sampledResult) {
+			return { data: sampledResult.data, success: true };
+		}
 	}
 
 	return { data: '', success: false, error: 'No QR code found in image' };
