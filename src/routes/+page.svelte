@@ -26,6 +26,7 @@
 		getMinimumPixelPerfectDotSize,
 		getPixelPerfectDotSizeStep,
 		isCapStyleAvailable,
+		isConnectionModeConfigurable,
 		isDotSizeConfigurable,
 		type ErrorCorrectionLevel,
 		type CapStyle,
@@ -33,6 +34,7 @@
 	} from '$lib/qr/generate';
 	import { onDestroy, onMount } from 'svelte';
 	import Dropdown from '$lib/components/Dropdown.svelte';
+	import Slider from '$lib/components/Slider.svelte';
 	import DateRangePicker from '$lib/components/DateRangePicker.svelte';
 	import ReaderResult from '$lib/components/ReaderResult.svelte';
 	import { Tooltip, TooltipContent, TooltipTrigger } from '$lib/components/ui/tooltip';
@@ -40,6 +42,7 @@
 
 	// --- State ---
 	let activeSection = $state<'generate' | 'read'>('generate');
+	let activeStep = $state<'payload' | 'styling'>('payload');
 	let exportCanvas: HTMLCanvasElement;
 	let previewCanvas = $state<HTMLCanvasElement | undefined>(undefined);
 	let copyStatus = $state<'idle' | 'done' | 'error'>('idle');
@@ -62,6 +65,10 @@
 	let pixelRatioMenuOpen = $state(false);
 	let pixelRatioActiveIndex = $state(-1);
 	let pixelRatioInputEl = $state<HTMLInputElement | undefined>(undefined);
+	let fgColorInput = $state(qrState.fgColor.toUpperCase());
+	let bgColorInput = $state(qrState.bgColor.toUpperCase());
+	let fgColorPicker = $state<HTMLInputElement | undefined>(undefined);
+	let bgColorPicker = $state<HTMLInputElement | undefined>(undefined);
 
 	const payloadTypeItems = (Object.entries(payloadLabels) as [PayloadType, string][]).map(
 		([value, label]) => ({ value, label })
@@ -87,11 +94,9 @@
 		miter: 'Mitered corner'
 	};
 	const connectionModeLabels: Record<ConnectionMode, string> = {
-		disconnected: 'Disconnected',
-		lines: 'Lines'
+		disconnected: 'Separated dots',
+		lines: 'Unioned dots'
 	};
-	const PREVIEW_RENDER_DEBOUNCE_MS = 72;
-
 	function getCurrentQrOptions() {
 		return {
 			data: qrState.encodedData,
@@ -108,7 +113,16 @@
 		};
 	}
 
-	const svgOutput = $derived(qrState.encodedData ? generateQRSvg(getCurrentQrOptions()) : '');
+	const canExport = $derived(Boolean(qrState.encodedData) && !qrState.isOverCapacity);
+
+	function getExportSvg(): string {
+		if (!canExport) return '';
+		try {
+			return generateQRSvg(getCurrentQrOptions());
+		} catch {
+			return '';
+		}
+	}
 
 	// --- Auto-detection ---
 	const urlPattern = /^(https?:\/\/|www\.)/i;
@@ -181,7 +195,7 @@
 	const isSimpleType = $derived(['url', 'text', 'phone'].includes(qrState.payloadType));
 	const themeItems = themes.map((t) => ({ value: t.id, label: t.name }));
 	const previewStatusText = $derived.by(() => {
-		if (!svgOutput) {
+		if (!canExport) {
 			return 'QR preview will appear after you enter content.';
 		}
 
@@ -192,6 +206,11 @@
 	const dotSizeSliderStep = $derived(getPixelPerfectDotSizeStep(qrState.pixelSize));
 	const dotSizeAvailabilityHint = `Available at pixel ratio ${MIN_PIXEL_SIZE_FOR_CUSTOM_DOTS}:1 and above`;
 	const capStyleAvailabilityHint = `Rounded and miter corner shapes are available at pixel ratio ${MIN_PIXEL_SIZE_FOR_DECORATIVE_CAPS}:1 and above`;
+	const canConfigureConnections = $derived(
+		isConnectionModeConfigurable(qrState.moduleStyle, qrState.capStyle, qrState.dotSize)
+	);
+	const connectionModeAvailabilityHint =
+		'At 100% with square modules, dot union does not change the result.';
 	const useRasterPreview = $derived(Boolean(qrState.encodedData));
 	const pixelRatioMenuId = 'pixel-ratio-suggestions';
 
@@ -205,6 +224,83 @@
 
 	function getConnectionModeLabel(connectionMode: ConnectionMode): string {
 		return connectionModeLabels[connectionMode];
+	}
+
+	function getConnectionModeDots(connectionMode: ConnectionMode) {
+		return connectionMode === 'lines'
+			? [
+					{ cx: 4, cy: 4 },
+					{ cx: 12, cy: 4 },
+					{ cx: 12, cy: 12 },
+					{ cx: 4, cy: 12 }
+				]
+			: [
+					{ cx: 4, cy: 4 },
+					{ cx: 12, cy: 4 },
+					{ cx: 4, cy: 12 },
+					{ cx: 12, cy: 12 }
+				];
+	}
+
+	function getConnectionModePath(connectionMode: ConnectionMode): string | null {
+		return connectionMode === 'lines' ? 'M4 4H12V12' : null;
+	}
+
+	function normalizeHexColor(value: string): string | null {
+		const trimmed = value.trim();
+		const withHash = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
+		const hex = withHash.slice(1);
+
+		if (!/^[\da-fA-F]{3}$|^[\da-fA-F]{6}$/.test(hex)) {
+			return null;
+		}
+
+		if (hex.length === 3) {
+			const expanded = hex
+				.split('')
+				.map((char) => char + char)
+				.join('');
+			return `#${expanded.toUpperCase()}`;
+		}
+
+		return `#${hex.toUpperCase()}`;
+	}
+
+	function updateColorInput(kind: 'fg' | 'bg', value: string) {
+		if (kind === 'fg') {
+			fgColorInput = value.toUpperCase();
+		} else {
+			bgColorInput = value.toUpperCase();
+		}
+
+		const normalized = normalizeHexColor(value);
+		if (!normalized) return;
+
+		if (kind === 'fg') {
+			qrState.setFgColor(normalized);
+		} else {
+			qrState.setBgColor(normalized);
+		}
+	}
+
+	function commitColorInput(kind: 'fg' | 'bg') {
+		const value = kind === 'fg' ? fgColorInput : bgColorInput;
+		const fallback = kind === 'fg' ? qrState.fgColor : qrState.bgColor;
+		const normalized = normalizeHexColor(value);
+		const nextValue = normalized ?? fallback;
+
+		if (kind === 'fg') {
+			fgColorInput = nextValue.toUpperCase();
+			if (normalized) qrState.setFgColor(nextValue);
+		} else {
+			bgColorInput = nextValue.toUpperCase();
+			if (normalized) qrState.setBgColor(nextValue);
+		}
+	}
+
+	function openColorPicker(kind: 'fg' | 'bg') {
+		const picker = kind === 'fg' ? fgColorPicker : bgColorPicker;
+		picker?.click();
 	}
 
 	function getCornerShapePath(capStyle: CapStyle): string {
@@ -347,6 +443,14 @@
 	});
 
 	$effect(() => {
+		fgColorInput = qrState.fgColor.toUpperCase();
+	});
+
+	$effect(() => {
+		bgColorInput = qrState.bgColor.toUpperCase();
+	});
+
+	$effect(() => {
 		if (pixelRatioActiveIndex >= pixelSizeItems.length) {
 			pixelRatioActiveIndex = Math.max(pixelSizeItems.length - 1, -1);
 		}
@@ -365,11 +469,13 @@
 
 	// --- Export ---
 	async function exportAs(fmt: 'svg' | 'png' | 'jpg') {
-		if (!svgOutput) return;
+		if (!canExport) return;
 		const qrOptions = getCurrentQrOptions();
 
 		if (fmt === 'svg') {
-			const blob = new Blob([svgOutput], { type: 'image/svg+xml' });
+			const svg = getExportSvg();
+			if (!svg) return;
+			const blob = new Blob([svg], { type: 'image/svg+xml' });
 			download(blob, 'qr.svg');
 		} else {
 			if (!exportCanvas) return;
@@ -400,7 +506,7 @@
 	}
 
 	async function copyToClipboard() {
-		if (!svgOutput || !exportCanvas || typeof ClipboardItem === 'undefined') return;
+		if (!canExport || !exportCanvas || typeof ClipboardItem === 'undefined') return;
 
 		try {
 			await generateQRCanvas(exportCanvas, getCurrentQrOptions());
@@ -459,6 +565,7 @@
 		const decoded = decodePayload(readerResult);
 		qrState.replacePayload(decoded.type, decoded.fields as never);
 		activeSection = 'generate';
+		activeStep = 'payload';
 	}
 
 	// --- Reader ---
@@ -680,16 +787,17 @@
 			!useRasterPreview ||
 			!previewCanvas ||
 			!qrState.encodedData ||
+			qrState.isOverCapacity ||
 			typeof window === 'undefined'
 		) {
 			return;
 		}
 
 		const qrOptions = getCurrentQrOptions();
+		const debounce = Math.round(Math.min(qrState.encodedByteLength / 1500, 1) * 150);
 		let canceled = false;
 		const timeout = window.setTimeout(() => {
 			void (async () => {
-				await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
 				if (!canceled && previewCanvas) {
 					try {
 						await generateQRCanvas(previewCanvas, qrOptions);
@@ -698,11 +806,11 @@
 					}
 				}
 			})();
-		}, PREVIEW_RENDER_DEBOUNCE_MS);
+		}, debounce);
 
 		return () => {
 			canceled = true;
-			window.clearTimeout(timeout);
+			clearTimeout(timeout);
 		};
 	});
 
@@ -811,7 +919,52 @@
 				aria-labelledby="generate-trigger"
 			>
 				<div class="accordion-content">
-					<section class="generate-form" aria-label="QR generation form">
+					<!-- Sub-accordion: Payload -->
+					<h4 class="sub-accordion-heading">
+						<button
+							type="button"
+							class="sub-accordion-trigger"
+							class:expanded={activeStep === 'payload'}
+							aria-expanded={activeStep === 'payload'}
+							aria-controls="payload-panel"
+							id="payload-trigger"
+							onclick={() => (activeStep = 'payload')}
+						>
+							<span class="sub-accordion-title" class:active={activeStep === 'payload'}>Payload</span>
+							<span class="byte-budget-inline" class:over={qrState.isOverCapacity}>
+								<span class="byte-budget-bar">
+									<span
+										class="byte-budget-fill"
+										style:width="{Math.min((qrState.encodedByteLength / qrState.maxBytes) * 100, 100)}%"
+									></span>
+								</span>
+								<span class="byte-budget-label">
+									{qrState.encodedByteLength}<span class="byte-budget-sep">/</span>{qrState.maxBytes}
+								</span>
+							</span>
+							<svg
+								class="accordion-chevron"
+								class:open={activeStep === 'payload'}
+								width="14"
+								height="14"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+								aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg
+							>
+						</button>
+					</h4>
+
+					<div
+						id="payload-panel"
+						class="sub-accordion-panel"
+						class:open={activeStep === 'payload'}
+						role="region"
+						aria-labelledby="payload-trigger"
+					>
+						<div class="sub-accordion-content">
+							<section class="generate-form" class:over-capacity={qrState.isOverCapacity} aria-label="QR generation form">
 						<!-- Type Selector -->
 						<Dropdown
 							items={payloadTypeItems}
@@ -841,75 +994,78 @@
 
 						<!-- Primary field (with auto-detect for simple types) -->
 						{#if isSimpleType}
-							<div class="field">
-								<input
-									class="input"
-									type="text"
+							<div class="field field-fill">
+								<textarea
+									class="input textarea text-payload-input"
 									aria-label={getPrimaryLabel()}
 									placeholder={getPrimaryPlaceholder()}
 									value={getPrimaryValue()}
 									oninput={(e) => handlePrimaryInput(e.currentTarget.value)}
-								/>
+								></textarea>
 							</div>
 						{:else}
 							<!-- Multi-field forms -->
 							<div class="fields">
 								{#if qrState.payloadType === 'wifi'}
-									<input
-										class="input"
-										type="text"
-										aria-label="Wi-Fi network name"
-										placeholder="Network name (SSID)"
-										value={qrState.payloads.wifi.ssid}
-										oninput={(e) => qrState.setPayloadField('wifi', 'ssid', e.currentTarget.value)}
-									/>
-									<div class="password-input-wrapper">
+									<label class="labeled-input">
+										<span class="labeled-input-tag">SSID</span>
 										<input
-											class="input password-input"
-											type={showWifiPassword ? 'text' : 'password'}
-											aria-label="Wi-Fi password"
-											placeholder="Password"
-											value={qrState.payloads.wifi.password}
-											oninput={(e) =>
-												qrState.setPayloadField('wifi', 'password', e.currentTarget.value)}
+											class="input"
+											type="text"
+											aria-label="Wi-Fi network name"
+											value={qrState.payloads.wifi.ssid}
+											oninput={(e) => qrState.setPayloadField('wifi', 'ssid', e.currentTarget.value)}
 										/>
-										<button
-											type="button"
-											class="password-eye"
-											aria-label={showWifiPassword ? 'Hide password' : 'Show password'}
-											onclick={() => (showWifiPassword = !showWifiPassword)}
-										>
-											{#if showWifiPassword}
-												<svg
-													width="16"
-													height="16"
-													viewBox="0 0 16 16"
-													fill="none"
-													stroke="currentColor"
-													stroke-width="1.5"
-													><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z" /><circle
-														cx="8"
-														cy="8"
-														r="2"
-													/></svg
-												>
-											{:else}
-												<svg
-													width="16"
-													height="16"
-													viewBox="0 0 16 16"
-													fill="none"
-													stroke="currentColor"
-													stroke-width="1.5"
-													><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z" /><circle
-														cx="8"
-														cy="8"
-														r="2"
-													/><path d="M3 13L13 3" /></svg
-												>
-											{/if}
-										</button>
-									</div>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Password</span>
+										<div class="password-input-wrapper">
+											<input
+												class="input password-input"
+												type={showWifiPassword ? 'text' : 'password'}
+												aria-label="Wi-Fi password"
+												value={qrState.payloads.wifi.password}
+												oninput={(e) =>
+													qrState.setPayloadField('wifi', 'password', e.currentTarget.value)}
+											/>
+											<button
+												type="button"
+												class="password-eye"
+												aria-label={showWifiPassword ? 'Hide password' : 'Show password'}
+												onclick={() => (showWifiPassword = !showWifiPassword)}
+											>
+												{#if showWifiPassword}
+													<svg
+														width="16"
+														height="16"
+														viewBox="0 0 16 16"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="1.5"
+														><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z" /><circle
+															cx="8"
+															cy="8"
+															r="2"
+														/></svg
+													>
+												{:else}
+													<svg
+														width="16"
+														height="16"
+														viewBox="0 0 16 16"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="1.5"
+														><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z" /><circle
+															cx="8"
+															cy="8"
+															r="2"
+														/><path d="M3 13L13 3" /></svg
+													>
+												{/if}
+											</button>
+										</div>
+									</label>
 									<div class="inline-options">
 										<span class="field-label" id="wifi-encryption-label">Encryption</span>
 										<div
@@ -958,150 +1114,182 @@
 										</button>
 									</div>
 								{:else if qrState.payloadType === 'sms'}
-									<input
-										class="input"
-										type="tel"
-										aria-label="SMS phone number"
-										placeholder="Phone number"
-										value={qrState.payloads.sms.number}
-										oninput={(e) => qrState.setPayloadField('sms', 'number', e.currentTarget.value)}
-									/>
-									<textarea
-										class="input textarea"
-										aria-label="SMS message"
-										placeholder="Message"
-										rows="2"
-										value={qrState.payloads.sms.message}
-										oninput={(e) =>
-											qrState.setPayloadField('sms', 'message', e.currentTarget.value)}
-									></textarea>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Phone</span>
+										<input
+											class="input"
+											type="tel"
+											aria-label="SMS phone number"
+											value={qrState.payloads.sms.number}
+											oninput={(e) => qrState.setPayloadField('sms', 'number', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Message</span>
+										<textarea
+											class="input textarea"
+											aria-label="SMS message"
+											rows="2"
+											value={qrState.payloads.sms.message}
+											oninput={(e) =>
+												qrState.setPayloadField('sms', 'message', e.currentTarget.value)}
+										></textarea>
+									</label>
 								{:else if qrState.payloadType === 'email'}
-									<input
-										class="input"
-										type="email"
-										aria-label="Recipient email"
-										placeholder="Recipient email"
-										value={qrState.payloads.email.to}
-										oninput={(e) => qrState.setPayloadField('email', 'to', e.currentTarget.value)}
-									/>
-									<input
-										class="input"
-										type="text"
-										aria-label="Email subject"
-										placeholder="Subject"
-										value={qrState.payloads.email.subject}
-										oninput={(e) =>
-											qrState.setPayloadField('email', 'subject', e.currentTarget.value)}
-									/>
-									<textarea
-										class="input textarea"
-										aria-label="Email body"
-										placeholder="Body"
-										rows="2"
-										value={qrState.payloads.email.body}
-										oninput={(e) => qrState.setPayloadField('email', 'body', e.currentTarget.value)}
-									></textarea>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Email</span>
+										<input
+											class="input"
+											type="email"
+											aria-label="Recipient email"
+											value={qrState.payloads.email.to}
+											oninput={(e) => qrState.setPayloadField('email', 'to', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Subject</span>
+										<input
+											class="input"
+											type="text"
+											aria-label="Email subject"
+											value={qrState.payloads.email.subject}
+											oninput={(e) =>
+												qrState.setPayloadField('email', 'subject', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Body</span>
+										<textarea
+											class="input textarea"
+											aria-label="Email body"
+											rows="2"
+											value={qrState.payloads.email.body}
+											oninput={(e) => qrState.setPayloadField('email', 'body', e.currentTarget.value)}
+										></textarea>
+									</label>
 								{:else if qrState.payloadType === 'vcard'}
 									<div class="field-row">
-										<input
-											class="input"
-											type="text"
-											aria-label="vCard first name"
-											placeholder="First name"
-											value={qrState.payloads.vcard.firstName}
-											oninput={(e) =>
-												qrState.setPayloadField('vcard', 'firstName', e.currentTarget.value)}
-										/>
-										<input
-											class="input"
-											type="text"
-											aria-label="vCard last name"
-											placeholder="Last name"
-											value={qrState.payloads.vcard.lastName}
-											oninput={(e) =>
-												qrState.setPayloadField('vcard', 'lastName', e.currentTarget.value)}
-										/>
+										<label class="labeled-input">
+											<span class="labeled-input-tag">First</span>
+											<input
+												class="input"
+												type="text"
+												aria-label="vCard first name"
+												value={qrState.payloads.vcard.firstName}
+												oninput={(e) =>
+													qrState.setPayloadField('vcard', 'firstName', e.currentTarget.value)}
+											/>
+										</label>
+										<label class="labeled-input">
+											<span class="labeled-input-tag">Last</span>
+											<input
+												class="input"
+												type="text"
+												aria-label="vCard last name"
+												value={qrState.payloads.vcard.lastName}
+												oninput={(e) =>
+													qrState.setPayloadField('vcard', 'lastName', e.currentTarget.value)}
+											/>
+										</label>
 									</div>
-									<input
-										class="input"
-										type="tel"
-										aria-label="vCard phone"
-										placeholder="Phone"
-										value={qrState.payloads.vcard.phone}
-										oninput={(e) =>
-											qrState.setPayloadField('vcard', 'phone', e.currentTarget.value)}
-									/>
-									<input
-										class="input"
-										type="email"
-										aria-label="vCard email"
-										placeholder="Email"
-										value={qrState.payloads.vcard.email}
-										oninput={(e) =>
-											qrState.setPayloadField('vcard', 'email', e.currentTarget.value)}
-									/>
-									<input
-										class="input"
-										type="text"
-										aria-label="vCard organization"
-										placeholder="Organization"
-										value={qrState.payloads.vcard.org}
-										oninput={(e) => qrState.setPayloadField('vcard', 'org', e.currentTarget.value)}
-									/>
-									<input
-										class="input"
-										type="text"
-										aria-label="vCard title"
-										placeholder="Title"
-										value={qrState.payloads.vcard.title}
-										oninput={(e) =>
-											qrState.setPayloadField('vcard', 'title', e.currentTarget.value)}
-									/>
-									<input
-										class="input"
-										type="url"
-										aria-label="vCard website"
-										placeholder="Website"
-										value={qrState.payloads.vcard.url}
-										oninput={(e) => qrState.setPayloadField('vcard', 'url', e.currentTarget.value)}
-									/>
-									<input
-										class="input"
-										type="text"
-										aria-label="vCard address"
-										placeholder="Address"
-										value={qrState.payloads.vcard.address}
-										oninput={(e) =>
-											qrState.setPayloadField('vcard', 'address', e.currentTarget.value)}
-									/>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Phone</span>
+										<input
+											class="input"
+											type="tel"
+											aria-label="vCard phone"
+											value={qrState.payloads.vcard.phone}
+											oninput={(e) =>
+												qrState.setPayloadField('vcard', 'phone', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Email</span>
+										<input
+											class="input"
+											type="email"
+											aria-label="vCard email"
+											value={qrState.payloads.vcard.email}
+											oninput={(e) =>
+												qrState.setPayloadField('vcard', 'email', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Org</span>
+										<input
+											class="input"
+											type="text"
+											aria-label="vCard organization"
+											value={qrState.payloads.vcard.org}
+											oninput={(e) => qrState.setPayloadField('vcard', 'org', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Title</span>
+										<input
+											class="input"
+											type="text"
+											aria-label="vCard title"
+											value={qrState.payloads.vcard.title}
+											oninput={(e) =>
+												qrState.setPayloadField('vcard', 'title', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">URL</span>
+										<input
+											class="input"
+											type="url"
+											aria-label="vCard website"
+											value={qrState.payloads.vcard.url}
+											oninput={(e) => qrState.setPayloadField('vcard', 'url', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Address</span>
+										<input
+											class="input"
+											type="text"
+											aria-label="vCard address"
+											value={qrState.payloads.vcard.address}
+											oninput={(e) =>
+												qrState.setPayloadField('vcard', 'address', e.currentTarget.value)}
+										/>
+									</label>
 								{:else if qrState.payloadType === 'calendar'}
-									<input
-										class="input"
-										type="text"
-										aria-label="Calendar event title"
-										placeholder="Event title"
-										value={qrState.payloads.calendar.title}
-										oninput={(e) =>
-											qrState.setPayloadField('calendar', 'title', e.currentTarget.value)}
-									/>
-									<input
-										class="input"
-										type="text"
-										aria-label="Calendar location"
-										placeholder="Location"
-										value={qrState.payloads.calendar.location}
-										oninput={(e) =>
-											qrState.setPayloadField('calendar', 'location', e.currentTarget.value)}
-									/>
-									<textarea
-										class="input textarea"
-										aria-label="Calendar description"
-										placeholder="Description"
-										rows="2"
-										value={qrState.payloads.calendar.description}
-										oninput={(e) =>
-											qrState.setPayloadField('calendar', 'description', e.currentTarget.value)}
-									></textarea>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Title</span>
+										<input
+											class="input"
+											type="text"
+											aria-label="Calendar event title"
+											value={qrState.payloads.calendar.title}
+											oninput={(e) =>
+												qrState.setPayloadField('calendar', 'title', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Location</span>
+										<input
+											class="input"
+											type="text"
+											aria-label="Calendar location"
+											value={qrState.payloads.calendar.location}
+											oninput={(e) =>
+												qrState.setPayloadField('calendar', 'location', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Details</span>
+										<textarea
+											class="input textarea"
+											aria-label="Calendar description"
+											rows="2"
+											value={qrState.payloads.calendar.description}
+											oninput={(e) =>
+												qrState.setPayloadField('calendar', 'description', e.currentTarget.value)}
+										></textarea>
+									</label>
 									<DateRangePicker
 										label="Calendar event date and time range"
 										start={qrState.payloads.calendar.start}
@@ -1113,83 +1301,529 @@
 									/>
 								{:else if qrState.payloadType === 'geo'}
 									<div class="field-row">
-										<input
-											class="input"
-											type="text"
-											aria-label="Latitude"
-											placeholder="Latitude"
-											value={qrState.payloads.geo.latitude}
-											oninput={(e) =>
-												qrState.setPayloadField('geo', 'latitude', e.currentTarget.value)}
-										/>
-										<input
-											class="input"
-											type="text"
-											aria-label="Longitude"
-											placeholder="Longitude"
-											value={qrState.payloads.geo.longitude}
-											oninput={(e) =>
-												qrState.setPayloadField('geo', 'longitude', e.currentTarget.value)}
-										/>
+										<label class="labeled-input">
+											<span class="labeled-input-tag">Lat</span>
+											<input
+												class="input"
+												type="text"
+												aria-label="Latitude"
+												value={qrState.payloads.geo.latitude}
+												oninput={(e) =>
+													qrState.setPayloadField('geo', 'latitude', e.currentTarget.value)}
+											/>
+										</label>
+										<label class="labeled-input">
+											<span class="labeled-input-tag">Lng</span>
+											<input
+												class="input"
+												type="text"
+												aria-label="Longitude"
+												value={qrState.payloads.geo.longitude}
+												oninput={(e) =>
+													qrState.setPayloadField('geo', 'longitude', e.currentTarget.value)}
+											/>
+										</label>
 									</div>
 								{:else if qrState.payloadType === 'mecard'}
-									<input
-										class="input"
-										type="text"
-										aria-label="MeCard name"
-										placeholder="Name"
-										value={qrState.payloads.mecard.name}
-										oninput={(e) =>
-											qrState.setPayloadField('mecard', 'name', e.currentTarget.value)}
-									/>
-									<input
-										class="input"
-										type="tel"
-										aria-label="MeCard phone"
-										placeholder="Phone"
-										value={qrState.payloads.mecard.phone}
-										oninput={(e) =>
-											qrState.setPayloadField('mecard', 'phone', e.currentTarget.value)}
-									/>
-									<input
-										class="input"
-										type="email"
-										aria-label="MeCard email"
-										placeholder="Email"
-										value={qrState.payloads.mecard.email}
-										oninput={(e) =>
-											qrState.setPayloadField('mecard', 'email', e.currentTarget.value)}
-									/>
-									<input
-										class="input"
-										type="url"
-										aria-label="MeCard website"
-										placeholder="Website"
-										value={qrState.payloads.mecard.url}
-										oninput={(e) => qrState.setPayloadField('mecard', 'url', e.currentTarget.value)}
-									/>
-									<input
-										class="input"
-										type="text"
-										aria-label="MeCard address"
-										placeholder="Address"
-										value={qrState.payloads.mecard.address}
-										oninput={(e) =>
-											qrState.setPayloadField('mecard', 'address', e.currentTarget.value)}
-									/>
-									<textarea
-										class="input textarea"
-										aria-label="MeCard note"
-										placeholder="Note"
-										rows="2"
-										value={qrState.payloads.mecard.note}
-										oninput={(e) =>
-											qrState.setPayloadField('mecard', 'note', e.currentTarget.value)}
-									></textarea>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Name</span>
+										<input
+											class="input"
+											type="text"
+											aria-label="MeCard name"
+											value={qrState.payloads.mecard.name}
+											oninput={(e) =>
+												qrState.setPayloadField('mecard', 'name', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Phone</span>
+										<input
+											class="input"
+											type="tel"
+											aria-label="MeCard phone"
+											value={qrState.payloads.mecard.phone}
+											oninput={(e) =>
+												qrState.setPayloadField('mecard', 'phone', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Email</span>
+										<input
+											class="input"
+											type="email"
+											aria-label="MeCard email"
+											value={qrState.payloads.mecard.email}
+											oninput={(e) =>
+												qrState.setPayloadField('mecard', 'email', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">URL</span>
+										<input
+											class="input"
+											type="url"
+											aria-label="MeCard website"
+											value={qrState.payloads.mecard.url}
+											oninput={(e) => qrState.setPayloadField('mecard', 'url', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Address</span>
+										<input
+											class="input"
+											type="text"
+											aria-label="MeCard address"
+											value={qrState.payloads.mecard.address}
+											oninput={(e) =>
+												qrState.setPayloadField('mecard', 'address', e.currentTarget.value)}
+										/>
+									</label>
+									<label class="labeled-input">
+										<span class="labeled-input-tag">Note</span>
+										<textarea
+											class="input textarea"
+											aria-label="MeCard note"
+											rows="2"
+											value={qrState.payloads.mecard.note}
+											oninput={(e) =>
+												qrState.setPayloadField('mecard', 'note', e.currentTarget.value)}
+										></textarea>
+									</label>
 								{/if}
 							</div>
 						{/if}
-					</section>
+							</section>
+						</div>
+					</div>
+
+					<!-- Sub-accordion: Appearance -->
+					<h4 class="sub-accordion-heading">
+						<button
+							type="button"
+							class="sub-accordion-trigger"
+							class:expanded={activeStep === 'styling'}
+							aria-expanded={activeStep === 'styling'}
+							aria-controls="styling-panel"
+							id="styling-trigger"
+							onclick={() => (activeStep = 'styling')}
+						>
+							<span class="sub-accordion-title" class:active={activeStep === 'styling'}>Appearance</span>
+							<svg
+								class="accordion-chevron"
+								class:open={activeStep === 'styling'}
+								width="14"
+								height="14"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.5"
+								aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg
+							>
+						</button>
+					</h4>
+
+					<div
+						id="styling-panel"
+						class="sub-accordion-panel"
+						class:open={activeStep === 'styling'}
+						role="region"
+						aria-labelledby="styling-trigger"
+					>
+						<div class="sub-accordion-content">
+							<div class="styling-form">
+						<div class="settings-row">
+							<div class="mini-dropdown-wrapper pixel-ratio-setting">
+								<span class="mini-dropdown-label">Pixel Ratio</span>
+								<div class="ratio-field" onclick={(event) => event.stopPropagation()}>
+									<div class="pixel-ratio-combobox">
+										<label class="sr-only" for="pixel-ratio-input">Pixel ratio</label>
+										<div
+											class="mini-dropdown-trigger ratio-trigger ratio-input-shell"
+											onclick={() => {
+												pixelRatioInputEl?.focus();
+												openPixelRatioMenu();
+											}}
+										>
+											<input
+												id="pixel-ratio-input"
+												bind:this={pixelRatioInputEl}
+												type="number"
+												min="1"
+												inputmode="numeric"
+												pattern="[0-9]*"
+												class="pixel-ratio-input"
+												role="combobox"
+												aria-label="Pixel ratio"
+												aria-expanded={pixelRatioMenuOpen}
+												aria-controls={pixelRatioMenuId}
+												aria-activedescendant={pixelRatioMenuOpen &&
+												pixelRatioActiveIndex >= 0 &&
+												pixelSizeItems[pixelRatioActiveIndex]
+													? `${pixelRatioMenuId}-${pixelSizeItems[pixelRatioActiveIndex].value}`
+													: undefined}
+												autocomplete="off"
+												value={pixelRatioInput}
+												onfocus={openPixelRatioMenu}
+												oninput={handlePixelRatioInput}
+												onkeydown={handlePixelRatioKeydown}
+												onblur={() => {
+													commitPixelRatio();
+												}}
+											/>
+										</div>
+										{#if pixelRatioMenuOpen && pixelSizeItems.length}
+											<div
+												id={pixelRatioMenuId}
+												class="pixel-ratio-menu"
+												role="listbox"
+												aria-label="Suggested pixel ratios"
+												onpointerdown={(event) => {
+													event.preventDefault();
+													event.stopPropagation();
+												}}
+												onclick={(event) => {
+													event.stopPropagation();
+												}}
+											>
+												{#each pixelSizeItems as item, index (item.value)}
+													<button
+														type="button"
+														id={`${pixelRatioMenuId}-${item.value}`}
+														class="pixel-ratio-option"
+														class:active={index === pixelRatioActiveIndex}
+														role="option"
+														aria-selected={index === pixelRatioActiveIndex}
+														onmouseenter={() => {
+															pixelRatioActiveIndex = index;
+														}}
+														onpointerdown={(event) => {
+															event.preventDefault();
+															event.stopPropagation();
+														}}
+														onclick={(event) => {
+															event.stopPropagation();
+															selectPixelRatio(item.value);
+														}}
+													>
+														<span class="ratio-item">{item.label}</span>
+													</button>
+												{/each}
+											</div>
+										{/if}
+									</div>
+									<span class="ratio-suffix">&nbsp;:&nbsp;1</span>
+								</div>
+							</div>
+
+							<div class="mini-dropdown-wrapper">
+								<div class="mini-dropdown-label-row">
+									<span class="mini-dropdown-label">Dot Size</span>
+									<Tooltip>
+										<TooltipTrigger class="info-tooltip-trigger" aria-label="Dot size guidance">
+											[i]
+										</TooltipTrigger>
+										<TooltipContent side="top" sideOffset={6} class="dot-size-tooltip">
+											Small dot sizes tend to scan better in dark-background themes. Readers
+											struggle more with dark-on-light QR codes at small sizes, especially when
+											the connected lines are enabled.
+										</TooltipContent>
+									</Tooltip>
+								</div>
+								{#key `${qrState.pixelSize}-${dotSizeSliderMin}-${dotSizeSliderStep}-${canAdjustDotSize ? 'enabled' : 'disabled'}`}
+									{#if canAdjustDotSize}
+										<Slider
+											min={dotSizeSliderMin}
+											max={MAX_DOT_SIZE}
+											step={dotSizeSliderStep}
+											value={qrState.dotSize}
+											label="Dot size"
+											formatValue={(v) => `${Math.round(v * 100)}%`}
+											oninput={(v) => qrState.setDotSize(v)}
+										/>
+									{:else}
+										<Tooltip>
+											<TooltipTrigger>
+												{#snippet child({ props })}
+													<div
+														{...props}
+														class="disabled-slider-trigger"
+														aria-label={dotSizeAvailabilityHint}
+													>
+														<Slider
+															min={dotSizeSliderMin}
+															max={MAX_DOT_SIZE}
+															step={dotSizeSliderStep}
+															value={qrState.dotSize}
+															label="Dot size"
+															disabled
+															formatValue={(v) => `${Math.round(v * 100)}%`}
+															oninput={() => {}}
+														/>
+													</div>
+												{/snippet}
+											</TooltipTrigger>
+											<TooltipContent side="top" sideOffset={6} class="disabled-slider-tooltip">
+												{dotSizeAvailabilityHint}
+											</TooltipContent>
+										</Tooltip>
+									{/if}
+								{/key}
+							</div>
+						</div>
+
+						<div class="settings-row">
+							<div class="mini-dropdown-wrapper">
+								<span class="mini-dropdown-label">Corner Shape</span>
+								<div class="ec-radio-group" role="radiogroup" aria-label="Corner shape">
+									{#each capStyleValues as cap (cap)}
+										{#if isCapStyleDisabled(cap)}
+											<Tooltip>
+												<TooltipTrigger>
+													{#snippet child({ props })}
+														<div
+															{...props}
+															class="disabled-cap-trigger"
+															aria-label={capStyleAvailabilityHint}
+														>
+															<button
+																type="button"
+																class="ec-radio"
+																role="radio"
+																aria-checked={qrState.capStyle === cap}
+																aria-label={getCornerShapeLabel(cap)}
+																aria-disabled="true"
+																disabled
+															>
+																<svg
+																	class="corner-shape-icon"
+																	viewBox="0 0 16 16"
+																	fill="currentColor"
+																	aria-hidden="true"
+																>
+																	<path d={getCornerShapePath(cap)} />
+																</svg>
+															</button>
+														</div>
+													{/snippet}
+												</TooltipTrigger>
+												<TooltipContent side="top" sideOffset={6} class="disabled-cap-tooltip">
+													{capStyleAvailabilityHint}
+												</TooltipContent>
+											</Tooltip>
+										{:else}
+											<button
+												type="button"
+												class="ec-radio"
+												class:active={qrState.capStyle === cap}
+												role="radio"
+												aria-checked={qrState.capStyle === cap}
+												aria-label={getCornerShapeLabel(cap)}
+												onkeydown={(e) => handleCapStyleKeydown(e, cap)}
+												onclick={() => qrState.setCapStyle(cap)}
+											>
+												<svg
+													class="corner-shape-icon"
+													viewBox="0 0 16 16"
+													fill="currentColor"
+													aria-hidden="true"
+												>
+													<path d={getCornerShapePath(cap)} />
+												</svg>
+											</button>
+										{/if}
+									{/each}
+								</div>
+							</div>
+
+							<div class="mini-dropdown-wrapper">
+								<span class="mini-dropdown-label">Dot Union</span>
+								{#if canConfigureConnections}
+									<div class="ec-radio-group" role="radiogroup" aria-label="Dot union">
+										{#each connectionModeValues as mode (mode)}
+											<button
+												type="button"
+												class="ec-radio"
+												class:active={qrState.connectionMode === mode}
+												role="radio"
+												aria-checked={qrState.connectionMode === mode}
+												aria-label={getConnectionModeLabel(mode)}
+												onkeydown={(e) => handleConnectionModeKeydown(e, mode)}
+												onclick={() => qrState.setConnectionMode(mode)}
+											>
+												<svg
+													class="connection-mode-icon"
+													viewBox="0 0 16 16"
+													aria-hidden="true"
+												>
+													{#if getConnectionModePath(mode)}
+														<path
+															d={getConnectionModePath(mode)}
+															fill="none"
+															stroke="currentColor"
+															stroke-width="1.8"
+															stroke-linecap="round"
+															stroke-linejoin="round"
+														/>
+													{/if}
+													{#each getConnectionModeDots(mode) as dot (`${mode}-${dot.cx}-${dot.cy}`)}
+														<circle cx={dot.cx} cy={dot.cy} r="1.35" fill="currentColor" />
+													{/each}
+												</svg>
+											</button>
+										{/each}
+									</div>
+								{:else}
+									<Tooltip>
+										<TooltipTrigger>
+											{#snippet child({ props })}
+												<div
+													{...props}
+													class="disabled-connection-trigger"
+													aria-label={connectionModeAvailabilityHint}
+												>
+													<div class="ec-radio-group" role="radiogroup" aria-label="Dot union">
+														{#each connectionModeValues as mode (mode)}
+															<button
+																type="button"
+																class="ec-radio"
+																class:active={qrState.connectionMode === mode}
+																role="radio"
+																aria-checked={qrState.connectionMode === mode}
+																aria-label={getConnectionModeLabel(mode)}
+																aria-disabled="true"
+																disabled
+															>
+																<svg
+																	class="connection-mode-icon"
+																	viewBox="0 0 16 16"
+																	aria-hidden="true"
+																>
+																	{#if getConnectionModePath(mode)}
+																		<path
+																			d={getConnectionModePath(mode)}
+																			fill="none"
+																			stroke="currentColor"
+																			stroke-width="1.8"
+																			stroke-linecap="round"
+																			stroke-linejoin="round"
+																		/>
+																	{/if}
+																	{#each getConnectionModeDots(mode) as dot (`${mode}-${dot.cx}-${dot.cy}`)}
+																		<circle
+																			cx={dot.cx}
+																			cy={dot.cy}
+																			r="1.35"
+																			fill="currentColor"
+																		/>
+																	{/each}
+																</svg>
+															</button>
+														{/each}
+													</div>
+												</div>
+											{/snippet}
+										</TooltipTrigger>
+										<TooltipContent
+											side="top"
+											sideOffset={6}
+											class="disabled-connection-tooltip"
+										>
+											{connectionModeAvailabilityHint}
+										</TooltipContent>
+									</Tooltip>
+								{/if}
+							</div>
+						</div>
+
+						<div class="settings-row">
+							<div class="mini-dropdown-wrapper">
+								<span class="mini-dropdown-label">Foreground</span>
+								<div class="color-field" role="group" aria-label="Foreground color">
+									<button
+										type="button"
+										class="color-swatch-trigger"
+										aria-label="Open foreground color picker"
+										onclick={() => openColorPicker('fg')}
+									>
+										<span class="color-swatch" style={`background: ${qrState.fgColor}`}></span>
+									</button>
+									<input
+										bind:this={fgColorPicker}
+										type="color"
+										class="color-picker-input"
+										tabindex="-1"
+										aria-hidden="true"
+										value={qrState.fgColor}
+										oninput={(e) => updateColorInput('fg', e.currentTarget.value)}
+									/>
+									<input
+										type="text"
+										class="color-text-input"
+										inputmode="text"
+										spellcheck="false"
+										autocapitalize="characters"
+										autocomplete="off"
+										maxlength="7"
+										aria-label="Foreground hex color"
+										value={fgColorInput}
+										oninput={(e) => updateColorInput('fg', e.currentTarget.value)}
+										onblur={() => commitColorInput('fg')}
+										onkeydown={(e) => {
+											if (e.key === 'Enter') {
+												e.preventDefault();
+												commitColorInput('fg');
+											}
+										}}
+									/>
+								</div>
+							</div>
+							<div class="mini-dropdown-wrapper">
+								<span class="mini-dropdown-label">Background</span>
+								<div class="color-field" role="group" aria-label="Background color">
+									<button
+										type="button"
+										class="color-swatch-trigger"
+										aria-label="Open background color picker"
+										onclick={() => openColorPicker('bg')}
+									>
+										<span class="color-swatch" style={`background: ${qrState.bgColor}`}></span>
+									</button>
+									<input
+										bind:this={bgColorPicker}
+										type="color"
+										class="color-picker-input"
+										tabindex="-1"
+										aria-hidden="true"
+										value={qrState.bgColor}
+										oninput={(e) => updateColorInput('bg', e.currentTarget.value)}
+									/>
+									<input
+										type="text"
+										class="color-text-input"
+										inputmode="text"
+										spellcheck="false"
+										autocapitalize="characters"
+										autocomplete="off"
+										maxlength="7"
+										aria-label="Background hex color"
+										value={bgColorInput}
+										oninput={(e) => updateColorInput('bg', e.currentTarget.value)}
+										onblur={() => commitColorInput('bg')}
+										onkeydown={(e) => {
+											if (e.key === 'Enter') {
+												e.preventDefault();
+												commitColorInput('bg');
+											}
+										}}
+									/>
+								</div>
+							</div>
+						</div>
+
+							</div>
+						</div>
+					</div>
 				</div>
 			</div>
 
@@ -1227,7 +1861,6 @@
 				aria-labelledby="read-trigger"
 			>
 				<div class="accordion-content">
-					<!-- Drag & Drop Zone -->
 					<section
 						class="drop-zone"
 						class:dragging={isDragging}
@@ -1379,7 +2012,6 @@
 						{/if}
 					</div>
 
-					<!-- Result -->
 					{#if readerResult}
 						<ReaderResult raw={readerResult} onuse={loadResultIntoGenerator} />
 					{/if}
@@ -1395,9 +2027,10 @@
 		<aside class="card-right" aria-labelledby="preview-heading">
 			<h2 id="preview-heading" class="sr-only">QR preview and export options</h2>
 			<p class="sr-only" aria-live="polite">{previewStatusText}</p>
-			<div class="preview-area" aria-hidden="true">
+			<div class="preview-area">
 				{#if useRasterPreview}
-					<canvas bind:this={previewCanvas} class="preview-canvas"></canvas>
+					<canvas bind:this={previewCanvas} class="preview-canvas" aria-hidden="true"
+					></canvas>
 				{:else}
 					<svg
 						width="64"
@@ -1417,297 +2050,38 @@
 				{/if}
 			</div>
 
-			<div class="card-right-footer">
-				<div class="settings-section">
-					<section class="settings-group" aria-labelledby="size-settings-heading">
-						<h3 id="size-settings-heading" class="settings-group-title">Size</h3>
-						<div class="settings-row">
-							<div class="mini-dropdown-wrapper pixel-ratio-setting">
-								<span class="mini-dropdown-label">Pixel Ratio</span>
-								<div class="ratio-field" onclick={(event) => event.stopPropagation()}>
-									<div class="pixel-ratio-combobox">
-										<label class="sr-only" for="pixel-ratio-input">Pixel ratio</label>
-										<div
-											class="mini-dropdown-trigger ratio-trigger ratio-input-shell"
-											onclick={() => {
-												pixelRatioInputEl?.focus();
-												openPixelRatioMenu();
-											}}
-										>
-											<input
-												id="pixel-ratio-input"
-												bind:this={pixelRatioInputEl}
-												type="number"
-												min="1"
-												inputmode="numeric"
-												pattern="[0-9]*"
-												class="pixel-ratio-input"
-												role="combobox"
-												aria-label="Pixel ratio"
-												aria-expanded={pixelRatioMenuOpen}
-												aria-controls={pixelRatioMenuId}
-												aria-activedescendant={pixelRatioMenuOpen &&
-												pixelRatioActiveIndex >= 0 &&
-												pixelSizeItems[pixelRatioActiveIndex]
-													? `${pixelRatioMenuId}-${pixelSizeItems[pixelRatioActiveIndex].value}`
-													: undefined}
-												autocomplete="off"
-												value={pixelRatioInput}
-												onfocus={openPixelRatioMenu}
-												oninput={handlePixelRatioInput}
-												onkeydown={handlePixelRatioKeydown}
-												onblur={() => {
-													commitPixelRatio();
-												}}
-											/>
-										</div>
-										{#if pixelRatioMenuOpen && pixelSizeItems.length}
-											<div
-												id={pixelRatioMenuId}
-												class="pixel-ratio-menu"
-												role="listbox"
-												aria-label="Suggested pixel ratios"
-											>
-												{#each pixelSizeItems as item, index (item.value)}
-													<button
-														type="button"
-														id={`${pixelRatioMenuId}-${item.value}`}
-														class="pixel-ratio-option"
-														class:active={index === pixelRatioActiveIndex}
-														role="option"
-														aria-selected={index === pixelRatioActiveIndex}
-														onmouseenter={() => {
-															pixelRatioActiveIndex = index;
-														}}
-														onpointerdown={(event) => {
-															event.preventDefault();
-															selectPixelRatio(item.value);
-														}}
-													>
-														<span class="ratio-item">{item.label}</span>
-													</button>
-												{/each}
-											</div>
-										{/if}
-									</div>
-									<span class="ratio-suffix">&nbsp;:&nbsp;1</span>
-								</div>
-							</div>
-
-							<div class="mini-dropdown-wrapper">
-								<div class="mini-dropdown-label-row">
-									<span class="mini-dropdown-label">Dot Size</span>
-									<Tooltip>
-										<TooltipTrigger class="info-tooltip-trigger" aria-label="Dot size guidance">
-											[i]
-										</TooltipTrigger>
-										<TooltipContent side="top" sideOffset={6} class="dot-size-tooltip">
-											Small dot sizes tend to scan better in dark-background themes. Readers
-											struggle more with dark-on-light QR codes at small sizes, especially when the
-											connected lines are enabled.
-										</TooltipContent>
-									</Tooltip>
-								</div>
-								{#key `${qrState.pixelSize}-${dotSizeSliderMin}-${dotSizeSliderStep}-${canAdjustDotSize ? 'enabled' : 'disabled'}`}
-									{#if canAdjustDotSize}
-										<div class="slider-field">
-											<input
-												type="range"
-												class="dot-size-slider"
-												min={dotSizeSliderMin}
-												max={MAX_DOT_SIZE}
-												step={dotSizeSliderStep}
-												value={qrState.dotSize}
-												aria-label="Dot size"
-												oninput={(e) => qrState.setDotSize(Number(e.currentTarget.value))}
-											/>
-											<span class="slider-value">{Math.round(qrState.dotSize * 100)}%</span>
-										</div>
-									{:else}
-										<Tooltip>
-											<TooltipTrigger>
-												{#snippet child({ props })}
-													<div
-														{...props}
-														class="slider-field disabled disabled-slider-trigger"
-														aria-label={dotSizeAvailabilityHint}
-													>
-														<input
-															type="range"
-															class="dot-size-slider"
-															min={dotSizeSliderMin}
-															max={MAX_DOT_SIZE}
-															step={dotSizeSliderStep}
-															value={qrState.dotSize}
-															aria-label="Dot size"
-															disabled
-														/>
-														<span class="slider-value">{Math.round(qrState.dotSize * 100)}%</span>
-													</div>
-												{/snippet}
-											</TooltipTrigger>
-											<TooltipContent side="top" sideOffset={6} class="disabled-slider-tooltip">
-												{dotSizeAvailabilityHint}
-											</TooltipContent>
-										</Tooltip>
-									{/if}
-								{/key}
-							</div>
-						</div>
-					</section>
-
-					<section class="settings-group" aria-labelledby="shape-settings-heading">
-						<h3 id="shape-settings-heading" class="settings-group-title">Shape</h3>
-						<div class="settings-row">
-							<div class="mini-dropdown-wrapper">
-								<span class="mini-dropdown-label">Corner Shape</span>
-								<div class="ec-radio-group" role="radiogroup" aria-label="Corner shape">
-									{#each capStyleValues as cap (cap)}
-										{#if isCapStyleDisabled(cap)}
-											<Tooltip>
-												<TooltipTrigger>
-													{#snippet child({ props })}
-														<div
-															{...props}
-															class="disabled-cap-trigger"
-															aria-label={capStyleAvailabilityHint}
-														>
-															<button
-																type="button"
-																class="ec-radio"
-																role="radio"
-																aria-checked={qrState.capStyle === cap}
-																aria-label={getCornerShapeLabel(cap)}
-																aria-disabled="true"
-																disabled
-															>
-																<svg
-																	class="corner-shape-icon"
-																	viewBox="0 0 16 16"
-																	fill="currentColor"
-																	aria-hidden="true"
-																>
-																	<path d={getCornerShapePath(cap)} />
-																</svg>
-															</button>
-														</div>
-													{/snippet}
-												</TooltipTrigger>
-												<TooltipContent side="top" sideOffset={6} class="disabled-cap-tooltip">
-													{capStyleAvailabilityHint}
-												</TooltipContent>
-											</Tooltip>
-										{:else}
-											<button
-												type="button"
-												class="ec-radio"
-												class:active={qrState.capStyle === cap}
-												role="radio"
-												aria-checked={qrState.capStyle === cap}
-												aria-label={getCornerShapeLabel(cap)}
-												onkeydown={(e) => handleCapStyleKeydown(e, cap)}
-												onclick={() => qrState.setCapStyle(cap)}
-											>
-												<svg
-													class="corner-shape-icon"
-													viewBox="0 0 16 16"
-													fill="currentColor"
-													aria-hidden="true"
-												>
-													<path d={getCornerShapePath(cap)} />
-												</svg>
-											</button>
-										{/if}
-									{/each}
-								</div>
-							</div>
-
-							<div class="mini-dropdown-wrapper">
-								<span class="mini-dropdown-label">Connections</span>
-								<div class="ec-radio-group" role="radiogroup" aria-label="Connection mode">
-									{#each connectionModeValues as mode (mode)}
-										<button
-											type="button"
-											class="ec-radio"
-											class:active={qrState.connectionMode === mode}
-											role="radio"
-											aria-checked={qrState.connectionMode === mode}
-											aria-label={getConnectionModeLabel(mode)}
-											onkeydown={(e) => handleConnectionModeKeydown(e, mode)}
-											onclick={() => qrState.setConnectionMode(mode)}
-										>
-											{connectionModeLabels[mode]}
-										</button>
-									{/each}
-								</div>
-							</div>
-						</div>
-					</section>
-
-					<section class="settings-group" aria-labelledby="color-settings-heading">
-						<h3 id="color-settings-heading" class="settings-group-title">Color</h3>
-						<div class="settings-row">
-							<div class="mini-dropdown-wrapper">
-								<span class="mini-dropdown-label">Foreground</span>
-								<label class="color-field">
-									<input
-										type="color"
-										class="color-input"
-										value={qrState.fgColor}
-										oninput={(e) => qrState.setFgColor(e.currentTarget.value)}
-									/>
-									<span class="color-hex">{qrState.fgColor}</span>
-								</label>
-							</div>
-							<div class="mini-dropdown-wrapper">
-								<span class="mini-dropdown-label">Background</span>
-								<label class="color-field">
-									<input
-										type="color"
-										class="color-input"
-										value={qrState.bgColor}
-										oninput={(e) => qrState.setBgColor(e.currentTarget.value)}
-									/>
-									<span class="color-hex">{qrState.bgColor}</span>
-								</label>
-							</div>
-						</div>
-					</section>
-
-					<section class="settings-group" aria-labelledby="reliability-settings-heading">
-						<h3 id="reliability-settings-heading" class="settings-group-title">Reliability</h3>
-						<div class="settings-row settings-row-single">
-							<div class="mini-dropdown-wrapper">
-								<span class="mini-dropdown-label">Error Correction</span>
-								<div class="ec-radio-group" role="radiogroup" aria-label="Error correction level">
-									{#each ecLevels as level (level.value)}
-										<button
-											type="button"
-											class="ec-radio"
-											class:active={qrState.errorCorrection === level.value}
-											role="radio"
-											aria-checked={qrState.errorCorrection === level.value}
-											onkeydown={(e) => handleErrorCorrectionKeydown(e, level.value)}
-											onclick={() => {
-												qrState.setErrorCorrection(level.value);
-											}}
-										>
-											{level.label} <span class="ec-pct">{level.pct}</span>
-										</button>
-									{/each}
-								</div>
-							</div>
-						</div>
-					</section>
+			<div class="error-correction-row">
+				<span class="mini-dropdown-label">Error Correction</span>
+				<div
+					class="ec-radio-group"
+					role="radiogroup"
+					aria-label="Error correction level"
+				>
+					{#each ecLevels as level (level.value)}
+						<button
+							type="button"
+							class="ec-radio"
+							class:active={qrState.errorCorrection === level.value}
+							role="radio"
+							aria-checked={qrState.errorCorrection === level.value}
+							onkeydown={(e) => handleErrorCorrectionKeydown(e, level.value)}
+							onclick={() => {
+								qrState.setErrorCorrection(level.value);
+							}}
+						>
+							{level.label} <span class="ec-pct">{level.pct}</span>
+						</button>
+					{/each}
 				</div>
+			</div>
 
-				<div class="export-row" role="group" aria-label="Export QR code">
+			<div class="export-row" role="group" aria-label="Export QR code">
 					<button
 						type="button"
-						class="export-btn copy-btn"
-						aria-label="Copy QR code to clipboard"
-						disabled={!svgOutput}
-						onclick={copyToClipboard}
+						class="export-btn"
+						aria-label="Download QR code as PNG"
+						disabled={!canExport}
+						onclick={() => exportAs('png')}
 					>
 						<svg
 							width="14"
@@ -1717,71 +2091,72 @@
 							stroke="currentColor"
 							stroke-width="1.5"
 						>
+							<path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" />
+						</svg>
+						<span class="export-format-label">PNG</span>
+					</button>
+					<button
+						type="button"
+						class="export-btn"
+						aria-label="Download QR code as JPG"
+						disabled={!canExport}
+						onclick={() => exportAs('jpg')}
+					>
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+						>
+							<path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" />
+						</svg>
+						<span class="export-format-label">JPG</span>
+					</button>
+					<button
+						type="button"
+						class="export-btn"
+						aria-label="Download QR code as SVG"
+						disabled={!canExport}
+						onclick={() => exportAs('svg')}
+					>
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+						>
+							<path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" />
+						</svg>
+						<span class="export-format-label">SVG</span>
+					</button>
+					<button
+						type="button"
+						class="export-btn export-btn-copy"
+						aria-label={copyStatus === 'done'
+							? 'Copied QR code to clipboard'
+							: copyStatus === 'error'
+								? 'Retry copying QR code to clipboard'
+								: 'Copy QR code to clipboard'}
+						disabled={!canExport}
+						onclick={copyToClipboard}
+					>
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 14 14"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.5"
+							aria-hidden="true"
+						>
 							<rect x="4" y="4" width="8" height="8" />
 							<path d="M4 10H3a1 1 0 01-1-1V3a1 1 0 011-1h6a1 1 0 011 1v1" />
 						</svg>
-						{copyStatus === 'done' ? 'Copied' : copyStatus === 'error' ? 'Retry' : 'Copy'}
 					</button>
-					<div class="download-group" role="group" aria-label="Download QR code">
-						<button
-							type="button"
-							class="export-btn"
-							aria-label="Download QR code as SVG"
-							disabled={!svgOutput}
-							onclick={() => exportAs('svg')}
-						>
-							<svg
-								width="14"
-								height="14"
-								viewBox="0 0 16 16"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.5"
-							>
-								<path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" />
-							</svg>
-							SVG
-						</button>
-						<button
-							type="button"
-							class="export-btn"
-							aria-label="Download QR code as PNG"
-							disabled={!svgOutput}
-							onclick={() => exportAs('png')}
-						>
-							<svg
-								width="14"
-								height="14"
-								viewBox="0 0 16 16"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.5"
-							>
-								<path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" />
-							</svg>
-							PNG
-						</button>
-						<button
-							type="button"
-							class="export-btn"
-							aria-label="Download QR code as JPG"
-							disabled={!svgOutput}
-							onclick={() => exportAs('jpg')}
-						>
-							<svg
-								width="14"
-								height="14"
-								viewBox="0 0 16 16"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.5"
-							>
-								<path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10" />
-							</svg>
-							JPG
-						</button>
-					</div>
-				</div>
 			</div>
 		</aside>
 	</div>
@@ -1790,11 +2165,12 @@
 <style>
 	/* Page & Card shell */
 	.page {
-		min-height: 100vh;
+		height: 100vh;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		padding: 1rem;
+		padding: 0.5rem;
+		overflow: hidden;
 		background: var(--background);
 		transition:
 			background 0.3s ease,
@@ -1807,7 +2183,7 @@
 		grid-template-rows: auto 1fr;
 		width: 100%;
 		max-width: 900px;
-		height: 720px;
+		height: min(720px, calc(100vh - 1rem));
 		border: 1px solid var(--border);
 		overflow: hidden;
 		transition: border-color 0.3s ease;
@@ -1977,6 +2353,7 @@
 		transition: grid-template-rows 0.3s ease;
 		min-height: 0;
 		flex: 0 0 auto;
+		overflow: hidden;
 	}
 
 	.accordion-panel.open {
@@ -1990,10 +2367,83 @@
 		gap: 0.75rem;
 		overflow: hidden;
 		min-height: 0;
+		height: 0;
 	}
 
 	.accordion-panel.open .accordion-content {
+		height: auto;
 		padding-bottom: 0.75rem;
+	}
+
+	/* Sub-accordion (Payload / Appearance inside Generate) */
+	.sub-accordion-heading {
+		margin: 0;
+	}
+
+	.sub-accordion-trigger {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 0.5rem 0;
+		background: none;
+		border: none;
+		border-top: 1px solid var(--border);
+		cursor: pointer;
+		color: var(--foreground);
+		text-align: left;
+		transition: border-color 0.3s ease;
+	}
+
+	.sub-accordion-heading:first-of-type .sub-accordion-trigger {
+		border-top: none;
+	}
+
+	.sub-accordion-trigger:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+
+	.sub-accordion-title {
+		font-family: 'Oxanium', sans-serif;
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+		text-transform: uppercase;
+		color: var(--muted-foreground);
+		transition: all 0.2s ease;
+	}
+
+	.sub-accordion-title.active {
+		color: var(--foreground);
+	}
+
+	.sub-accordion-panel {
+		display: grid;
+		grid-template-rows: 0fr;
+		transition: grid-template-rows 0.25s ease;
+		min-height: 0;
+		flex: 0 0 auto;
+		overflow: hidden;
+	}
+
+	.sub-accordion-panel.open {
+		grid-template-rows: 1fr;
+		flex: 1 1 0px;
+	}
+
+	.sub-accordion-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		overflow: hidden;
+		min-height: 0;
+		height: 0;
+	}
+
+	.sub-accordion-panel.open .sub-accordion-content {
+		height: auto;
+		padding-bottom: 0.5rem;
 	}
 
 	/* Generate panel: form fills, settings stick to bottom */
@@ -2003,6 +2453,66 @@
 		flex-direction: column;
 		gap: 0.75rem;
 		min-height: 0;
+		overflow-y: auto;
+	}
+
+	.generate-form.over-capacity :is(.input, .textarea),
+	.generate-form.over-capacity :is(.input, .textarea):focus {
+		border-color: var(--destructive);
+	}
+
+	.byte-budget-inline {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0 0.75rem;
+		min-width: 0;
+	}
+
+	.byte-budget-bar {
+		display: block;
+		flex: 1;
+		height: 3px;
+		background: var(--border);
+		overflow: hidden;
+	}
+
+	.byte-budget-fill {
+		display: block;
+		height: 100%;
+		background: var(--muted-foreground);
+		transition: width 0.15s ease;
+	}
+
+	.byte-budget-inline.over .byte-budget-fill {
+		background: var(--destructive);
+	}
+
+	.byte-budget-label {
+		font-size: 0.6rem;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+		color: var(--muted-foreground);
+		white-space: nowrap;
+	}
+
+	.byte-budget-inline.over .byte-budget-label {
+		color: var(--destructive);
+	}
+
+	.byte-budget-sep {
+		opacity: 0.4;
+		margin: 0 0.1em;
+	}
+
+	.styling-form {
+		flex: 1 1 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+		min-height: 0;
+		overflow-x: hidden;
 		overflow-y: auto;
 	}
 
@@ -2070,6 +2580,56 @@
 		color: var(--muted-foreground);
 	}
 
+	.labeled-input {
+		display: flex;
+		align-items: stretch;
+		border: 1px solid var(--border);
+		background: var(--secondary);
+		transition: border-color 0.15s ease;
+	}
+
+	.labeled-input:focus-within {
+		border-color: var(--ring);
+	}
+
+	.generate-form.over-capacity .labeled-input,
+	.generate-form.over-capacity .labeled-input:focus-within {
+		border-color: var(--destructive);
+	}
+
+	.labeled-input-tag {
+		display: flex;
+		align-items: center;
+		padding: 0 0.625rem;
+		font-size: 0.65rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--muted-foreground);
+		white-space: nowrap;
+		flex-shrink: 0;
+		border-right: 1px solid var(--border);
+	}
+
+	.labeled-input .input {
+		border: none;
+		background: transparent;
+	}
+
+	.labeled-input .input:focus {
+		border-color: transparent;
+	}
+
+	.labeled-input .password-input-wrapper {
+		flex: 1;
+		min-width: 0;
+	}
+
+	.labeled-input .password-input-wrapper .input {
+		border: none;
+		background: transparent;
+	}
+
 	.password-input-wrapper {
 		position: relative;
 		display: flex;
@@ -2105,6 +2665,17 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
+	}
+
+	.field-fill {
+		flex: 1 1 0;
+		min-height: 0;
+	}
+
+	.text-payload-input {
+		flex: 1;
+		resize: none;
+		min-height: 0;
 	}
 
 	.fields {
@@ -2189,32 +2760,6 @@
 		color: var(--background);
 	}
 
-	/* Settings */
-	.settings-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.625rem;
-	}
-
-	.settings-group {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		padding: 0.75rem;
-		border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
-		background: color-mix(in srgb, var(--background) 18%, transparent);
-	}
-
-	.settings-group-title {
-		margin: 0;
-		font-family: 'Oxanium', sans-serif;
-		font-size: 0.72rem;
-		font-weight: 600;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: var(--foreground);
-	}
-
 	.swatch-dot {
 		width: 8px;
 		height: 8px;
@@ -2224,7 +2769,9 @@
 	/* Settings row (size + style side by side) */
 	.settings-row {
 		display: flex;
-		gap: 1.25rem;
+		align-items: end;
+		gap: 0.75rem;
+		min-width: 0;
 	}
 
 	.settings-row-single > .mini-dropdown-wrapper {
@@ -2234,6 +2781,7 @@
 
 	.mini-dropdown-wrapper {
 		flex: 1;
+		min-width: 0;
 		position: relative;
 		display: flex;
 		flex-direction: column;
@@ -2241,8 +2789,8 @@
 	}
 
 	.pixel-ratio-setting {
-		flex: 0 0 calc((100% - 1.25rem) / 3);
-		max-width: calc((100% - 1.25rem) / 3);
+		flex: 0 0 calc((100% - 0.75rem) / 3);
+		max-width: calc((100% - 0.75rem) / 3);
 		min-width: 0;
 	}
 
@@ -2258,6 +2806,7 @@
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--muted-foreground);
+		line-height: 1.2rem;
 	}
 
 	.mini-dropdown-trigger {
@@ -2265,7 +2814,8 @@
 		align-items: center;
 		gap: 0.375rem;
 		width: 100%;
-		padding: 0.5rem 0.625rem;
+		height: 32px;
+		padding: 0 0.625rem;
 		background: var(--secondary);
 		border: 1px solid var(--border);
 		color: var(--foreground);
@@ -2300,6 +2850,7 @@
 		position: relative;
 		flex: 1;
 		min-width: 0;
+		z-index: 30;
 	}
 
 	.ratio-trigger {
@@ -2384,6 +2935,7 @@
 	.ec-radio-group {
 		display: flex;
 		gap: 0;
+		height: 32px;
 		border: 1px solid var(--border);
 	}
 
@@ -2392,7 +2944,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		padding: 0.5rem 0;
+		padding: 0;
 		background: var(--secondary);
 		border: none;
 		border-right: 1px solid var(--border);
@@ -2408,6 +2960,13 @@
 	.corner-shape-icon {
 		width: 1rem;
 		height: 1rem;
+		overflow: visible;
+	}
+
+	.connection-mode-icon {
+		width: 1rem;
+		height: 1rem;
+		display: block;
 		overflow: visible;
 	}
 
@@ -2446,6 +3005,16 @@
 		border-right: none;
 	}
 
+	.disabled-connection-trigger {
+		display: flex;
+		width: 100%;
+		cursor: not-allowed;
+	}
+
+	.disabled-connection-trigger .ec-radio-group {
+		width: 100%;
+	}
+
 	.ec-pct {
 		font-size: 0.65rem;
 		font-weight: 400;
@@ -2453,39 +3022,8 @@
 	}
 
 	/* Slider field */
-	.slider-field {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.slider-field.disabled {
-		opacity: 0.45;
-		cursor: not-allowed;
-	}
-
-	.dot-size-slider {
-		flex: 1;
-		height: 4px;
-		accent-color: var(--foreground);
-		cursor: pointer;
-	}
-
-	.slider-field.disabled .dot-size-slider:disabled,
-	.slider-field.disabled .slider-value {
-		cursor: not-allowed;
-	}
-
 	.disabled-slider-trigger {
 		width: 100%;
-	}
-
-	.slider-value {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--muted-foreground);
-		min-width: 2.5rem;
-		text-align: right;
 	}
 
 	.info-tooltip-trigger {
@@ -2538,55 +3076,100 @@
 		line-height: 1.35;
 	}
 
+	:global(.disabled-connection-tooltip) {
+		max-width: 14rem;
+		padding: 0.5rem 0.625rem;
+		font-size: 0.68rem;
+		line-height: 1.35;
+	}
+
 	/* Color field */
 	.color-field {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		padding: 0.375rem 0.625rem;
+		height: 32px;
+		padding: 0 0.625rem;
 		background: var(--secondary);
 		border: 1px solid var(--border);
-		cursor: pointer;
 		transition: border-color 0.2s ease;
 	}
 
-	.color-field:hover {
+	.color-field:hover,
+	.color-field:focus-within {
 		border-color: var(--ring);
 	}
 
-	.color-input {
+	.color-swatch-trigger {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.75rem;
+		height: 1.75rem;
+		padding: 0;
+		border: none;
+		background: transparent;
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+
+	.color-swatch {
 		width: 1.25rem;
 		height: 1.25rem;
-		padding: 0;
 		border: 1px solid var(--border);
-		background: none;
-		cursor: pointer;
+		display: block;
 	}
 
-	.color-input::-webkit-color-swatch-wrapper {
+	.color-swatch-trigger:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+
+	.color-picker-input {
+		position: absolute;
+		width: 1px;
+		height: 1px;
 		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		clip-path: inset(50%);
+		border: 0;
+		white-space: nowrap;
 	}
 
-	.color-input::-webkit-color-swatch {
+	.color-text-input {
+		flex: 1;
+		min-width: 0;
+		padding: 0;
+		background: transparent;
 		border: none;
-	}
-
-	.color-input::-moz-color-swatch {
-		border: none;
-	}
-
-	.color-hex {
+		color: var(--foreground);
 		font-size: 0.75rem;
 		font-weight: 500;
-		color: var(--foreground);
 		font-family: 'DM Sans Variable', monospace;
 		text-transform: uppercase;
+		outline: none;
+	}
+
+	.color-text-input::placeholder {
+		color: var(--muted-foreground);
 	}
 
 	/* Export row */
+	.error-correction-row {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		margin-top: auto;
+		border-top: 1px solid var(--border);
+		padding-top: 0.625rem;
+	}
+
 	.export-row {
 		display: flex;
-		gap: 0.625rem;
+		gap: 0.375rem;
+		padding-top: 0.625rem;
 	}
 
 	.export-btn {
@@ -2595,37 +3178,40 @@
 		justify-content: center;
 		gap: 0.375rem;
 		padding: 0.5rem;
-		background: var(--foreground);
-		color: var(--background);
-		border: none;
+		background: var(--background);
+		color: var(--foreground);
+		border: 1px solid var(--foreground);
 		font-size: 0.75rem;
 		font-weight: 600;
 		cursor: pointer;
-		transition: opacity 0.15s ease;
-	}
-
-	.copy-btn {
-		flex: 1 1 0;
-		padding-inline: 0.75rem;
-	}
-
-	.download-group {
-		display: flex;
-		flex: 2 1 0;
-		gap: 0;
-	}
-
-	.download-group .export-btn {
 		flex: 1;
-		border-left: 1px solid color-mix(in srgb, var(--background) 18%, transparent);
+		transition:
+			background 0.15s ease,
+			color 0.15s ease;
 	}
 
-	.download-group .export-btn:first-child {
-		border-left: none;
+	.export-format-label {
+		letter-spacing: 0.02em;
 	}
 
-	.export-btn:hover {
-		opacity: 0.9;
+	.export-btn-copy {
+		flex: 0 0 auto;
+		gap: 0;
+		padding: 0;
+		aspect-ratio: 1;
+		background: var(--foreground);
+		color: var(--background);
+		border: 1px solid var(--foreground);
+	}
+
+	.export-btn:hover:not(:disabled) {
+		background: var(--foreground);
+		color: var(--background);
+	}
+
+	.export-btn-copy:hover:not(:disabled) {
+		background: var(--background);
+		color: var(--foreground);
 	}
 
 	.export-btn:disabled {
@@ -2647,6 +3233,7 @@
 	}
 
 	.preview-area {
+		position: relative;
 		flex: 1;
 		display: flex;
 		align-items: center;
@@ -2655,27 +3242,11 @@
 		overflow: hidden;
 	}
 
-	.preview-img {
-		width: 100%;
-		height: 100%;
-		object-fit: contain;
-		image-rendering: pixelated;
-	}
-
 	.preview-canvas {
 		width: 100%;
 		height: 100%;
 		object-fit: contain;
 		image-rendering: pixelated;
-	}
-
-	.card-right-footer {
-		display: flex;
-		flex-direction: column;
-		gap: 0.875rem;
-		padding-top: 0.625rem;
-		border-top: 1px solid var(--border);
-		margin-top: 0.625rem;
 	}
 
 	.preview-empty-icon {
@@ -2874,16 +3445,25 @@
 		color: var(--destructive);
 	}
 
-	/* Mobile: preview on top, form below */
+	/* Mobile: header first, form above preview */
 	@media (max-width: 640px) {
+		.page {
+			height: auto;
+			min-height: 100vh;
+			overflow: visible;
+		}
+
 		.card {
 			grid-template-columns: 1fr;
 			max-width: 100%;
 			height: auto;
 		}
 
+		.card-header {
+			order: -2;
+		}
+
 		.card-right {
-			order: -1;
 			border-left: none;
 			border-bottom: 1px solid var(--border);
 			min-height: 200px;
@@ -2897,9 +3477,14 @@
 
 		.accordion-panel.open {
 			flex: 0 0 auto;
+			min-height: 320px;
 		}
 
 		.generate-form {
+			flex: 1 1 0;
+		}
+
+		.styling-form {
 			flex: 0 0 auto;
 		}
 
