@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { themes, getTheme, getInitialThemeId, setTheme, getQrColors, themeStore, applyDocumentTheme } from '$lib/themes';
 	import { qrState } from '$lib/qr/state.svelte';
-	import Dropdown from './Dropdown.svelte';
+	import { Select, SelectTrigger, SelectContent, SelectItem } from '$lib/components/ui/select';
 	import { onMount } from 'svelte';
 
 	let currentTheme = $state(getInitialThemeId());
@@ -15,31 +15,31 @@
 		});
 		return unsubscribe;
 	});
-
-	const themeItems = themes.map((t) => ({ value: t.id, label: t.name }));
 </script>
 
-<Dropdown
-	items={themeItems}
+<Select
+	type="single"
 	value={currentTheme}
-	onselect={(id) => setTheme(id)}
-	align="right"
-	label="Theme"
+	onValueChange={(id) => { if (id) setTheme(id); }}
 >
-	{#snippet trigger({ open, value })}
-		<span class="flex items-center gap-1.5 px-2 py-1.5 bg-secondary border border-border text-foreground cursor-pointer text-xs leading-[1.5] w-[170px] transition-colors duration-200 hover:border-ring">
-			<span class="size-2.5 shrink-0" style="background: {getTheme(value).accent}"></span>
-			<span class="flex-1 font-medium whitespace-nowrap">{getTheme(value).name}</span>
-			<svg class="shrink-0 text-muted-foreground transition-transform duration-150 {open ? 'rotate-180' : ''}" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l3 3 3-3" /></svg>
-		</span>
-	{/snippet}
-	{#snippet children({ value, label, selected })}
-		<span
-			class="flex items-center gap-2 w-full h-full px-3 border-none text-sm text-left cursor-pointer transition-[opacity,filter] duration-150 hover:brightness-130 {selected ? 'font-semibold outline outline-1 outline-current -outline-offset-1' : ''}"
-			style="background: {getTheme(value).bg}; color: {getTheme(value).fg};"
-		>
-			<span class="size-2 shrink-0" style="background: {getTheme(value).accent}"></span>
-			{label}
-		</span>
-	{/snippet}
-</Dropdown>
+	<SelectTrigger aria-label="Theme" class="w-[170px] px-2 py-1.5 text-xs leading-[1.5]">
+		<span class="size-2.5 shrink-0" style="background: {getTheme(currentTheme).accent}"></span>
+		<span class="flex-1 font-medium whitespace-nowrap">{getTheme(currentTheme).name}</span>
+	</SelectTrigger>
+	<SelectContent>
+		{#each themes as theme (theme.id)}
+			<SelectItem value={theme.id} class="px-0 py-0 h-9">
+				{#snippet children({ selected })}
+					<span class="absolute end-2 flex size-3.5 items-center justify-center"></span>
+					<span
+						class="flex items-center gap-2 w-full h-full px-3 text-sm cursor-pointer transition-[opacity,filter] duration-150 hover:brightness-130 {selected ? 'font-semibold outline outline-1 outline-current -outline-offset-1' : ''}"
+						style="background: {theme.bg}; color: {theme.fg};"
+					>
+						<span class="size-2 shrink-0" style="background: {theme.accent}"></span>
+						{theme.name}
+					</span>
+				{/snippet}
+			</SelectItem>
+		{/each}
+	</SelectContent>
+</Select>
