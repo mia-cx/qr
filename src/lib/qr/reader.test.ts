@@ -8,7 +8,13 @@ vi.mock('jsqr', () => ({
 	default: vi.fn()
 }));
 
+vi.mock('./grid-sampler', () => ({
+	centerSampleQR: vi.fn(() => null)
+}));
+
 const mockedJsQR = vi.mocked(jsQR);
+const { centerSampleQR: mockedCenterSample } = await import('./grid-sampler');
+const mockedCenterSampleQR = vi.mocked(mockedCenterSample);
 
 describe('readQRFromImageData', () => {
 	const imageData = {
@@ -19,6 +25,8 @@ describe('readQRFromImageData', () => {
 
 	beforeEach(() => {
 		mockedJsQR.mockReset();
+		mockedCenterSampleQR.mockReset();
+		mockedCenterSampleQR.mockReturnValue(null);
 	});
 
 	it('returns decoded data when jsQR finds a code', () => {
@@ -30,9 +38,19 @@ describe('readQRFromImageData', () => {
 			data: 'https://mia.cx',
 			success: true
 		});
+		expect(mockedJsQR).toHaveBeenCalledTimes(1);
 	});
 
-	it('returns a friendly error when no code is found', () => {
+	it('passes inversionAttempts to jsQR', () => {
+		mockedJsQR.mockReturnValue({ data: 'test' } as ReturnType<typeof jsQR>);
+		readQRFromImageData(imageData);
+		expect(mockedJsQR).toHaveBeenCalledWith(
+			expect.anything(), expect.anything(), expect.anything(),
+			{ inversionAttempts: 'attemptBoth' }
+		);
+	});
+
+	it('returns a friendly error when all strategies fail', () => {
 		mockedJsQR.mockReturnValue(null);
 
 		expect(readQRFromImageData(imageData)).toEqual({
@@ -40,20 +58,36 @@ describe('readQRFromImageData', () => {
 			success: false,
 			error: 'No QR code found in image'
 		});
-		// Called twice: once raw, once with dilation fallback
+		// Called 3 times: raw, dilated, (centerSampleQR returned null so no 3rd jsQR call)
 		expect(mockedJsQR).toHaveBeenCalledTimes(2);
 	});
 
 	it('falls back to dilation when raw image fails', () => {
 		mockedJsQR
-			.mockReturnValueOnce(null) // raw attempt fails
-			.mockReturnValueOnce({ data: 'dilated-read' } as ReturnType<typeof jsQR>); // dilated succeeds
+			.mockReturnValueOnce(null)
+			.mockReturnValueOnce({ data: 'dilated-read' } as ReturnType<typeof jsQR>);
 
 		expect(readQRFromImageData(imageData)).toEqual({
 			data: 'dilated-read',
 			success: true
 		});
 		expect(mockedJsQR).toHaveBeenCalledTimes(2);
+	});
+
+	it('falls back to center-sampling when dilation fails', () => {
+		const cleanImage = { data: new Uint8ClampedArray(4), width: 1, height: 1 };
+		mockedCenterSampleQR.mockReturnValue(cleanImage);
+		mockedJsQR
+			.mockReturnValueOnce(null) // raw fails
+			.mockReturnValueOnce(null) // dilated fails
+			.mockReturnValueOnce({ data: 'center-sampled' } as ReturnType<typeof jsQR>); // sampled succeeds
+
+		expect(readQRFromImageData(imageData)).toEqual({
+			data: 'center-sampled',
+			success: true
+		});
+		expect(mockedJsQR).toHaveBeenCalledTimes(3);
+		expect(mockedCenterSampleQR).toHaveBeenCalledTimes(1);
 	});
 
 	it('rejects oversized files before decoding them', async () => {
