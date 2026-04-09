@@ -10,7 +10,6 @@
 		getSafeGeoHref,
 		normalizeLineEndingsForFile,
 		payloadLabels,
-		type PayloadType,
 		type PayloadFields
 	} from '$lib/qr/payloads';
 	import { downloadBlob, focusCls } from '$lib/utils';
