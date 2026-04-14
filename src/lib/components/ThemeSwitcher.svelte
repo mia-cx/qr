@@ -1,10 +1,19 @@
 <script lang="ts">
-	import { themes, getTheme, getInitialThemeId, setTheme, getQrColors, themeStore, applyDocumentTheme } from '$lib/themes';
+	import * as Select from '$lib/components/ui/select';
+	import {
+		themes,
+		getTheme,
+		getInitialThemeId,
+		setTheme,
+		getQrColors,
+		themeStore,
+		applyDocumentTheme
+	} from '$lib/themes';
 	import { qrState } from '$lib/qr/state.svelte';
-	import Dropdown from './Dropdown.svelte';
 	import { onMount } from 'svelte';
 
 	let currentTheme = $state(getInitialThemeId());
+	let themeMenuOpen = $state(false);
 
 	onMount(() => {
 		const unsubscribe = themeStore.subscribe((id) => {
@@ -19,27 +28,32 @@
 	const themeItems = themes.map((t) => ({ value: t.id, label: t.name }));
 </script>
 
-<Dropdown
-	items={themeItems}
+<Select.Root
+	type="single"
+	bind:open={themeMenuOpen}
 	value={currentTheme}
-	onselect={(id) => setTheme(id)}
-	align="right"
-	label="Theme"
+	onValueChange={(value: string) => setTheme(value)}
 >
-	{#snippet trigger({ open, value })}
-		<span class="flex items-center gap-1.5 px-2 py-1.5 bg-secondary border border-border text-foreground cursor-pointer text-xs leading-[1.5] w-[170px] transition-colors duration-200 hover:border-ring">
-			<span class="size-2.5 shrink-0" style="background: {getTheme(value).accent}"></span>
-			<span class="flex-1 font-medium whitespace-nowrap">{getTheme(value).name}</span>
-			<svg class="shrink-0 text-muted-foreground transition-transform duration-150 {open ? 'rotate-180' : ''}" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6l3 3 3-3" /></svg>
+	<Select.Trigger class="h-auto w-[170px] px-2 py-1.5 text-xs leading-[1.5] hover:border-ring">
+		<span class="flex items-center gap-1.5">
+			<span class="size-2.5 shrink-0" style={`background: ${getTheme(currentTheme).accent}`}></span>
+			<span class="flex-1 font-medium whitespace-nowrap">{getTheme(currentTheme).name}</span>
 		</span>
-	{/snippet}
-	{#snippet children({ value, label, selected })}
-		<span
-			class="flex items-center gap-2 w-full h-full px-3 border-none text-sm text-left cursor-pointer transition-[opacity,filter] duration-150 hover:brightness-130 {selected ? 'font-semibold outline outline-1 outline-current -outline-offset-1' : ''}"
-			style="background: {getTheme(value).bg}; color: {getTheme(value).fg};"
-		>
-			<span class="size-2 shrink-0" style="background: {getTheme(value).accent}"></span>
-			{label}
-		</span>
-	{/snippet}
-</Dropdown>
+	</Select.Trigger>
+	<Select.Content align="end" sideOffset={0}>
+		{#each themeItems as item (item.value)}
+			<Select.Item value={item.value} label={item.label} class="h-9">
+				{#snippet children({ selected })}
+					<span
+						class={`flex h-full w-full items-center gap-2 px-3 text-left text-sm transition-[opacity,filter] duration-150 hover:brightness-130 ${selected ? 'font-semibold outline outline-1 -outline-offset-1 outline-current' : ''}`}
+						style={`background: ${getTheme(item.value).bg}; color: ${getTheme(item.value).fg};`}
+					>
+						<span class="size-2 shrink-0" style={`background: ${getTheme(item.value).accent}`}
+						></span>
+						{item.label}
+					</span>
+				{/snippet}
+			</Select.Item>
+		{/each}
+	</Select.Content>
+</Select.Root>

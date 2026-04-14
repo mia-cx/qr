@@ -80,7 +80,10 @@ export const defaultPayloads: PayloadFields = {
 	mecard: { name: '', phone: '', email: '', url: '', address: '', note: '' }
 };
 
-export function decodePayload(raw: string): { type: PayloadType; fields: PayloadFields[PayloadType] } {
+export function decodePayload(raw: string): {
+	type: PayloadType;
+	fields: PayloadFields[PayloadType];
+} {
 	// WiFi
 	if (raw.startsWith('WIFI:')) {
 		const get = (key: string) => {
@@ -215,11 +218,17 @@ function escapeWifi(s: string): string {
 }
 
 function escapeVcard(s: string): string {
-	return s.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([,;])/g, '\\$1');
+	return s
+		.replace(/\\/g, '\\\\')
+		.replace(/\r?\n/g, '\\n')
+		.replace(/([,;])/g, '\\$1');
 }
 
 function escapeICalendarText(s: string): string {
-	return s.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/([,;])/g, '\\$1');
+	return s
+		.replace(/\\/g, '\\\\')
+		.replace(/\r?\n/g, '\\n')
+		.replace(/([,;])/g, '\\$1');
 }
 
 function formatCalendarDateTime(value: string): string {

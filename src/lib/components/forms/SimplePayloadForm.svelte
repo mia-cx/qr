@@ -39,9 +39,9 @@
 	}
 </script>
 
-<div class="flex flex-1 flex-col gap-1 min-h-0">
+<div class="flex min-h-0 flex-1 flex-col gap-1">
 	<textarea
-		class="flex-1 resize-none min-h-0 w-full px-3 py-2.5 bg-secondary border border-border text-foreground text-sm font-sans outline-none transition-colors duration-150 focus:border-ring placeholder:text-muted-foreground"
+		class="min-h-0 w-full flex-1 resize-none border border-border bg-secondary px-3 py-2.5 font-sans text-sm text-foreground transition-colors duration-150 outline-none placeholder:text-muted-foreground focus:border-ring"
 		aria-label={getPrimaryLabel(qrState.payloadType)}
 		placeholder={getPrimaryPlaceholder(qrState.payloadType)}
 		value={getPrimaryValue()}

@@ -10,25 +10,14 @@
 		oninput: (value: number) => void;
 	}
 
-	let {
-		value,
-		min,
-		max,
-		step,
-		disabled = false,
-		label,
-		formatValue,
-		oninput
-	}: Props = $props();
+	let { value, min, max, step, disabled = false, label, formatValue, oninput }: Props = $props();
 
 	const THUMB_W = 44;
 	let trackEl = $state<HTMLDivElement | undefined>(undefined);
 	let trackW = $state(0);
 	let progress = $derived(((value - min) / (max - min)) * 100);
 	let displayValue = $derived(formatValue ? formatValue(value) : String(value));
-	let thumbLeft = $derived(
-		trackW > 0 ? (progress / 100) * (trackW - THUMB_W) + THUMB_W / 2 : 0
-	);
+	let thumbLeft = $derived(trackW > 0 ? (progress / 100) * (trackW - THUMB_W) + THUMB_W / 2 : 0);
 
 	$effect(() => {
 		if (!trackEl) return;

@@ -10,9 +10,14 @@
 		getSafeGeoHref,
 		normalizeLineEndingsForFile,
 		payloadLabels,
-		type PayloadType,
 		type PayloadFields
 	} from '$lib/qr/payloads';
+	import { downloadBlob } from '$lib/utils';
+	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
+	import CopyIcon from '@lucide/svelte/icons/copy';
+	import DownloadIcon from '@lucide/svelte/icons/download';
+	import EyeIcon from '@lucide/svelte/icons/eye';
+	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
 
 	interface Props {
 		raw: string;
@@ -28,23 +33,13 @@
 	const fields = $derived(decoded.fields);
 
 	function downloadFile(filename: string, content: string, mime: string) {
-		const blob = new Blob([content], { type: mime });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = filename;
-		a.click();
-		setTimeout(() => URL.revokeObjectURL(url), 1000);
+		downloadBlob(new Blob([content], { type: mime }), filename);
 	}
 
 	function downloadVcf() {
 		const f = fields as PayloadFields['vcard'];
 		const name = `${f.firstName}_${f.lastName}`.replace(/\s+/g, '_') || 'contact';
-		downloadFile(
-			`${name}.vcf`,
-			normalizeLineEndingsForFile(encodeVcardPayload(f)),
-			'text/vcard'
-		);
+		downloadFile(`${name}.vcf`, normalizeLineEndingsForFile(encodeVcardPayload(f)), 'text/vcard');
 	}
 
 	function downloadIcs() {
@@ -56,354 +51,244 @@
 			'text/calendar'
 		);
 	}
+
+	const typeBadgeCls =
+		'inline-flex w-fit border border-border bg-secondary px-1.5 py-0.5 font-heading text-[0.7rem] font-semibold uppercase tracking-[0.05em] text-muted-foreground';
+	const bodyCls = 'flex flex-col gap-1';
+	const fieldsCls = 'flex flex-col gap-1.5';
+	const fieldCls = 'flex flex-col gap-0.5';
+	const fieldLabelCls =
+		'text-[0.65rem] font-semibold uppercase tracking-[0.05em] text-muted-foreground';
+	const fieldValueCls = 'text-[0.85rem] text-foreground';
+	const fieldMutedCls = 'text-[0.8rem] text-muted-foreground';
+	const nameCls = 'font-heading text-[0.95rem] font-semibold text-foreground';
+	const linkCls =
+		'break-all text-[0.85rem] text-foreground underline underline-offset-2 transition-colors hover:text-muted-foreground';
+	const textBlockCls =
+		'm-0 whitespace-pre-wrap break-all border border-border bg-secondary p-2 text-[0.8rem] text-foreground';
+	const actionBtnCls =
+		'inline-flex items-center gap-1.5 border border-border bg-secondary px-2.5 py-1.5 text-xs text-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2';
 </script>
 
-<section class="reader-result" aria-live="polite">
-	<div class="result-header">
-		<span class="result-type">{payloadLabels[type]}</span>
+<section class="flex flex-col gap-2" aria-live="polite">
+	<div class="flex items-center gap-2">
+		<span class={typeBadgeCls}>{payloadLabels[type]}</span>
 	</div>
 
-	<div class="result-body">
+	<div class={bodyCls}>
 		{#if type === 'url'}
 			{@const f = fields as PayloadFields['url']}
 			{@const safeHref = getSafeExternalHref(f.url)}
 			{#if safeHref}
-				<a href={safeHref} target="_blank" rel="noopener noreferrer" class="result-link">{f.url}</a>
+				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+				<a href={safeHref} target="_blank" rel="noopener noreferrer" class={linkCls}>{f.url}</a>
 			{:else}
-				<span class="result-field-value">{f.url}</span>
+				<span class={fieldValueCls}>{f.url}</span>
 			{/if}
-
 		{:else if type === 'wifi'}
 			{@const f = fields as PayloadFields['wifi']}
-			<div class="result-fields">
-				<div class="result-field">
-					<span class="result-field-label">Network</span>
-					<span class="result-field-value">{f.ssid}</span>
+			<div class={fieldsCls}>
+				<div class={fieldCls}>
+					<span class={fieldLabelCls}>Network</span>
+					<span class={fieldValueCls}>{f.ssid}</span>
 				</div>
-				<div class="result-field">
-					<span class="result-field-label">Password</span>
-					<span class="result-field-value password-field">
-						<span class="password-text">{showPassword ? f.password : '•'.repeat(f.password.length || 8)}</span>
-						<button type="button" class="password-toggle" onclick={() => showPassword = !showPassword} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+				<div class={fieldCls}>
+					<span class={fieldLabelCls}>Password</span>
+					<span
+						class="flex items-center gap-1.5 border border-border bg-secondary px-2 py-1.5 text-[0.85rem] text-foreground"
+					>
+						<span class="flex-1 font-mono"
+							>{showPassword ? f.password : '•'.repeat(f.password.length || 8)}</span
+						>
+						<button
+							type="button"
+							class="inline-flex items-center p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+							onclick={() => (showPassword = !showPassword)}
+							aria-label={showPassword ? 'Hide password' : 'Show password'}
+						>
 							{#if showPassword}
-								<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z"/><circle cx="8" cy="8" r="2"/></svg>
+								<EyeOffIcon class="size-3.5" strokeWidth={1.5} />
 							{:else}
-								<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4z"/><circle cx="8" cy="8" r="2"/><path d="M3 13L13 3"/></svg>
+								<EyeIcon class="size-3.5" strokeWidth={1.5} />
 							{/if}
 						</button>
 					</span>
 				</div>
-				<div class="result-field">
-					<span class="result-field-label">Encryption</span>
-					<span class="result-field-value">{f.encryption === 'nopass' ? 'None' : f.encryption}</span>
+				<div class={fieldCls}>
+					<span class={fieldLabelCls}>Encryption</span>
+					<span class={fieldValueCls}>{f.encryption === 'nopass' ? 'None' : f.encryption}</span>
 				</div>
 				{#if f.hidden}
-					<div class="result-field">
-						<span class="result-field-label">Hidden</span>
-						<span class="result-field-value">Yes</span>
+					<div class={fieldCls}>
+						<span class={fieldLabelCls}>Hidden</span>
+						<span class={fieldValueCls}>Yes</span>
 					</div>
 				{/if}
 			</div>
-
 		{:else if type === 'phone'}
 			{@const f = fields as PayloadFields['phone']}
 			{@const phoneHref = getSafePhoneHref(f.number)}
 			{#if phoneHref}
-				<a href={phoneHref} class="result-link">{f.number}</a>
+				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+				<a href={phoneHref} class={linkCls}>{f.number}</a>
 			{:else}
-				<span class="result-field-value">{f.number}</span>
+				<span class={fieldValueCls}>{f.number}</span>
 			{/if}
-
 		{:else if type === 'sms'}
 			{@const f = fields as PayloadFields['sms']}
 			{@const smsHref = getSafeSmsHref(f.number)}
-			<div class="result-fields">
+			<div class={fieldsCls}>
 				{#if smsHref}
-					<a href={smsHref} class="result-link">{f.number}</a>
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+					<a href={smsHref} class={linkCls}>{f.number}</a>
 				{:else}
-					<span class="result-field-value">{f.number}</span>
+					<span class={fieldValueCls}>{f.number}</span>
 				{/if}
 				{#if f.message}
-					<pre class="result-text">{f.message}</pre>
+					<pre class={textBlockCls}>{f.message}</pre>
 				{/if}
 			</div>
-
 		{:else if type === 'email'}
 			{@const f = fields as PayloadFields['email']}
 			{@const mailHref = getSafeMailtoHref(f.to)}
-			<div class="result-fields">
+			<div class={fieldsCls}>
 				{#if mailHref}
-					<a href={mailHref} class="result-link">{f.to}</a>
+					<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+					<a href={mailHref} class={linkCls}>{f.to}</a>
 				{:else}
-					<span class="result-field-value">{f.to}</span>
+					<span class={fieldValueCls}>{f.to}</span>
 				{/if}
 				{#if f.subject}
-					<div class="result-field">
-						<span class="result-field-label">Subject</span>
-						<span class="result-field-value">{f.subject}</span>
+					<div class={fieldCls}>
+						<span class={fieldLabelCls}>Subject</span>
+						<span class={fieldValueCls}>{f.subject}</span>
 					</div>
 				{/if}
 				{#if f.body}
-					<pre class="result-text">{f.body}</pre>
+					<pre class={textBlockCls}>{f.body}</pre>
 				{/if}
 			</div>
-
 		{:else if type === 'vcard'}
 			{@const f = fields as PayloadFields['vcard']}
-			<div class="result-fields">
-				<span class="result-field-value contact-name">{f.firstName} {f.lastName}</span>
+			<div class={fieldsCls}>
+				<span class={nameCls}>{f.firstName} {f.lastName}</span>
 				{#if f.title || f.org}
-					<span class="result-field-muted">{[f.title, f.org].filter(Boolean).join(' at ')}</span>
+					<span class={fieldMutedCls}>{[f.title, f.org].filter(Boolean).join(' at ')}</span>
 				{/if}
 				{#if f.phone}
 					{@const vcardPhoneHref = getSafePhoneHref(f.phone)}
 					{#if vcardPhoneHref}
-						<a href={vcardPhoneHref} class="result-link">{f.phone}</a>
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a href={vcardPhoneHref} class={linkCls}>{f.phone}</a>
 					{:else}
-						<span class="result-field-value">{f.phone}</span>
+						<span class={fieldValueCls}>{f.phone}</span>
 					{/if}
 				{/if}
 				{#if f.email}
 					{@const vcardMailHref = getSafeMailtoHref(f.email)}
 					{#if vcardMailHref}
-						<a href={vcardMailHref} class="result-link">{f.email}</a>
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a href={vcardMailHref} class={linkCls}>{f.email}</a>
 					{:else}
-						<span class="result-field-value">{f.email}</span>
+						<span class={fieldValueCls}>{f.email}</span>
 					{/if}
 				{/if}
 				{#if f.url}
 					{@const safeHref = getSafeExternalHref(f.url)}
 					{#if safeHref}
-						<a href={safeHref} target="_blank" rel="noopener noreferrer" class="result-link">{f.url}</a>
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a href={safeHref} target="_blank" rel="noopener noreferrer" class={linkCls}>{f.url}</a>
 					{:else}
-						<span class="result-field-muted">{f.url}</span>
+						<span class={fieldMutedCls}>{f.url}</span>
 					{/if}
 				{/if}
-				{#if f.address}<span class="result-field-muted">{f.address}</span>{/if}
+				{#if f.address}<span class={fieldMutedCls}>{f.address}</span>{/if}
 			</div>
-
 		{:else if type === 'calendar'}
 			{@const f = fields as PayloadFields['calendar']}
-			<div class="result-fields">
-				<span class="result-field-value contact-name">{f.title}</span>
-				{#if f.location}<span class="result-field-muted">{f.location}</span>{/if}
+			<div class={fieldsCls}>
+				<span class={nameCls}>{f.title}</span>
+				{#if f.location}<span class={fieldMutedCls}>{f.location}</span>{/if}
 				{#if f.start || f.end}
-					<div class="result-field">
-						<span class="result-field-label">When</span>
-						<span class="result-field-value">{f.start} — {f.end}</span>
+					<div class={fieldCls}>
+						<span class={fieldLabelCls}>When</span>
+						<span class={fieldValueCls}>{f.start} — {f.end}</span>
 					</div>
 				{/if}
-				{#if f.description}<pre class="result-text">{f.description}</pre>{/if}
+				{#if f.description}<pre class={textBlockCls}>{f.description}</pre>{/if}
 			</div>
-
 		{:else if type === 'geo'}
 			{@const f = fields as PayloadFields['geo']}
 			{@const geoHref = getSafeGeoHref(f.latitude, f.longitude)}
 			{#if geoHref}
-				<a href={geoHref} class="result-link">{f.latitude}, {f.longitude}</a>
+				<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+				<a href={geoHref} class={linkCls}>{f.latitude}, {f.longitude}</a>
 			{:else}
-				<span class="result-field-value">{f.latitude}, {f.longitude}</span>
+				<span class={fieldValueCls}>{f.latitude}, {f.longitude}</span>
 			{/if}
-
 		{:else if type === 'mecard'}
 			{@const f = fields as PayloadFields['mecard']}
-			<div class="result-fields">
-				<span class="result-field-value contact-name">{f.name}</span>
+			<div class={fieldsCls}>
+				<span class={nameCls}>{f.name}</span>
 				{#if f.phone}
 					{@const mecardPhoneHref = getSafePhoneHref(f.phone)}
 					{#if mecardPhoneHref}
-						<a href={mecardPhoneHref} class="result-link">{f.phone}</a>
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a href={mecardPhoneHref} class={linkCls}>{f.phone}</a>
 					{:else}
-						<span class="result-field-value">{f.phone}</span>
+						<span class={fieldValueCls}>{f.phone}</span>
 					{/if}
 				{/if}
 				{#if f.email}
 					{@const mecardMailHref = getSafeMailtoHref(f.email)}
 					{#if mecardMailHref}
-						<a href={mecardMailHref} class="result-link">{f.email}</a>
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a href={mecardMailHref} class={linkCls}>{f.email}</a>
 					{:else}
-						<span class="result-field-value">{f.email}</span>
+						<span class={fieldValueCls}>{f.email}</span>
 					{/if}
 				{/if}
 				{#if f.url}
 					{@const safeHref = getSafeExternalHref(f.url)}
 					{#if safeHref}
-						<a href={safeHref} target="_blank" rel="noopener noreferrer" class="result-link">{f.url}</a>
+						<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+						<a href={safeHref} target="_blank" rel="noopener noreferrer" class={linkCls}>{f.url}</a>
 					{:else}
-						<span class="result-field-muted">{f.url}</span>
+						<span class={fieldMutedCls}>{f.url}</span>
 					{/if}
 				{/if}
-				{#if f.address}<span class="result-field-muted">{f.address}</span>{/if}
-				{#if f.note}<pre class="result-text">{f.note}</pre>{/if}
+				{#if f.address}<span class={fieldMutedCls}>{f.address}</span>{/if}
+				{#if f.note}<pre class={textBlockCls}>{f.note}</pre>{/if}
 			</div>
-
 		{:else}
-			<pre class="result-text">{raw}</pre>
+			<pre class={textBlockCls}>{raw}</pre>
 		{/if}
 	</div>
 
-	<div class="result-actions">
-		<button type="button" class="action-btn" onclick={() => navigator.clipboard.writeText(raw).catch(() => {})}>
-			<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="4" y="4" width="8" height="8"/><path d="M4 10H3a1 1 0 01-1-1V3a1 1 0 011-1h6a1 1 0 011 1v1"/></svg>
+	<div class="flex flex-wrap gap-1.5">
+		<button
+			type="button"
+			class={actionBtnCls}
+			onclick={() => navigator.clipboard.writeText(raw).catch(() => {})}
+		>
+			<CopyIcon class="size-3.5" strokeWidth={1.5} />
 			Copy
 		</button>
 		{#if type === 'vcard'}
-			<button type="button" class="action-btn" onclick={downloadVcf}>
-				<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10"/></svg>
+			<button type="button" class={actionBtnCls} onclick={downloadVcf}>
+				<DownloadIcon class="size-3.5" strokeWidth={1.5} />
 				Save .vcf
 			</button>
 		{/if}
 		{#if type === 'calendar'}
-			<button type="button" class="action-btn" onclick={downloadIcs}>
-				<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v8m0 0L5 7.5M8 10l3-2.5M3 12h10"/></svg>
+			<button type="button" class={actionBtnCls} onclick={downloadIcs}>
+				<DownloadIcon class="size-3.5" strokeWidth={1.5} />
 				Save .ics
 			</button>
 		{/if}
-		<button type="button" class="action-btn" onclick={onuse}>
-			<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 7h10M8 3l4 4-4 4"/></svg>
+		<button type="button" class={actionBtnCls} onclick={onuse}>
+			<ArrowRightIcon class="size-3.5" strokeWidth={1.5} />
 			Use as input
 		</button>
 	</div>
 </section>
-
-<style>
-	.reader-result {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.result-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.result-type {
-		font-family: 'Oxanium', sans-serif;
-		font-size: 0.7rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--muted-foreground);
-		padding: 0.125rem 0.375rem;
-		border: 1px solid var(--border);
-		background: var(--secondary);
-	}
-
-	.result-body {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.result-fields {
-		display: flex;
-		flex-direction: column;
-		gap: 0.375rem;
-	}
-
-	.result-field {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.result-field-label {
-		font-size: 0.65rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--muted-foreground);
-	}
-
-	.result-field-value {
-		font-size: 0.85rem;
-		color: var(--foreground);
-	}
-
-	.result-field-muted {
-		font-size: 0.8rem;
-		color: var(--muted-foreground);
-	}
-
-	.contact-name {
-		font-family: 'Oxanium', sans-serif;
-		font-weight: 600;
-		font-size: 0.95rem;
-	}
-
-	.result-link {
-		color: var(--foreground);
-		text-decoration: underline;
-		text-underline-offset: 2px;
-		font-size: 0.85rem;
-		word-break: break-all;
-	}
-
-	.result-link:hover {
-		color: var(--muted-foreground);
-	}
-
-	.result-text {
-		padding: 0.5rem;
-		background: var(--secondary);
-		border: 1px solid var(--border);
-		font-size: 0.8rem;
-		color: var(--foreground);
-		white-space: pre-wrap;
-		word-break: break-all;
-		margin: 0;
-	}
-
-	.password-field {
-		display: flex;
-		align-items: center;
-		gap: 0.375rem;
-		padding: 0.375rem 0.5rem;
-		background: var(--secondary);
-		border: 1px solid var(--border);
-		font-size: 0.85rem;
-	}
-
-	.password-text {
-		flex: 1;
-		font-family: 'DM Sans Variable', monospace;
-	}
-
-	.password-toggle {
-		all: unset;
-		cursor: pointer;
-		color: var(--muted-foreground);
-		display: flex;
-		align-items: center;
-		padding: 0.125rem;
-	}
-
-	.password-toggle:hover {
-		color: var(--foreground);
-	}
-
-	.result-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-	}
-
-	.action-btn {
-		display: flex;
-		align-items: center;
-		gap: 0.375rem;
-		padding: 0.375rem 0.625rem;
-		background: var(--secondary);
-		border: 1px solid var(--border);
-		color: var(--foreground);
-		font-size: 0.75rem;
-		cursor: pointer;
-		transition: background 0.12s ease;
-	}
-
-	.action-btn:hover {
-		background: var(--accent);
-	}
-</style>

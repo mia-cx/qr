@@ -1,9 +1,11 @@
 <script lang="ts">
+	import * as Accordion from '$lib/components/ui/accordion';
+	import * as Select from '$lib/components/ui/select';
 	import { qrState } from '$lib/qr/state.svelte';
 	import { payloadLabels, type PayloadType } from '$lib/qr/payloads';
 	import PayloadForm from './PayloadForm.svelte';
 	import AppearanceForm from './AppearanceForm.svelte';
-	import Dropdown from './Dropdown.svelte';
+	import { cn } from '$lib/utils';
 
 	interface Props {
 		activeStep: 'payload' | 'styling';
@@ -15,112 +17,99 @@
 	const payloadTypeItems = (Object.entries(payloadLabels) as [PayloadType, string][]).map(
 		([value, label]) => ({ value, label })
 	);
-
-	const focusCls = "focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2";
-	const subAccordionTriggerCls = `flex items-center justify-between w-full py-2 bg-transparent border-0 border-t border-border cursor-pointer text-foreground text-left transition-colors duration-300 ${focusCls}`;
 </script>
 
-<!-- Sub-accordion: Payload (first — no top border) -->
-<h4 class="m-0">
-	<button
-		type="button"
-		class="{subAccordionTriggerCls} !border-t-0"
-		aria-expanded={activeStep === 'payload'}
-		aria-controls="payload-panel"
-		id="payload-trigger"
-		onclick={() => onactivestepchange('payload')}
-	>
-		<span class="font-heading text-xs font-semibold tracking-[0.03em] uppercase transition-all duration-200 {activeStep === 'payload' ? 'text-foreground' : 'text-muted-foreground'}">Payload</span>
-		<span class="flex-1 flex items-center gap-2 px-3 min-w-0 {qrState.isOverCapacity ? '[&_.budget-fill]:!bg-destructive [&_.budget-label]:!text-destructive' : ''}">
-			<span class="block flex-1 h-[3px] bg-border overflow-hidden">
-				<span
-					class="budget-fill block h-full bg-muted-foreground transition-[width] duration-150"
-					style:width="{Math.min((qrState.encodedByteLength / qrState.maxBytes) * 100, 100)}%"
-				></span>
-			</span>
-			<span class="budget-label text-[0.6rem] font-semibold tabular-nums text-muted-foreground whitespace-nowrap">
-				{qrState.encodedByteLength}<span class="opacity-40 mx-[0.1em]">/</span>{qrState.maxBytes}
-			</span>
-		</span>
-		<svg
-			class="transition-transform duration-200 text-muted-foreground shrink-0 {activeStep === 'payload' ? 'rotate-180' : ''}"
-			width="14"
-			height="14"
-			viewBox="0 0 16 16"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.5"
-			aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg
-		>
-	</button>
-</h4>
-
-<div
-	id="payload-panel"
-	class="grid min-h-0 overflow-hidden transition-[grid-template-rows] duration-250 {activeStep === 'payload' ? 'grid-rows-[1fr] flex-[1_1_0px]' : 'grid-rows-[0fr] flex-[0_0_auto]'}"
-	role="region"
-	aria-labelledby="payload-trigger"
+<Accordion.Root
+	type="single"
+	bind:value={
+		() => activeStep,
+		(value) => {
+			if (value) onactivestepchange(value as 'payload' | 'styling');
+		}
+	}
+	class="flex min-h-0 flex-1 flex-col"
 >
-	<div class="flex flex-col gap-3 overflow-hidden min-h-0 {activeStep === 'payload' ? 'h-auto pb-2' : 'h-0'}">
-		<section class="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto {qrState.isOverCapacity ? '[&_input]:!border-destructive [&_textarea]:!border-destructive [&_input:focus]:!border-destructive [&_textarea:focus]:!border-destructive' : ''}" aria-label="QR generation form">
-			<Dropdown
-				items={payloadTypeItems}
-				value={qrState.payloadType}
-				label="QR content type"
-				onselect={(v) => qrState.setPayloadType(v as PayloadType)}
+	<Accordion.Item
+		value="payload"
+		class={`flex flex-col ${activeStep === 'payload' ? 'flex-1' : ''}`}
+	>
+		<Accordion.Trigger class="w-full py-2">
+			<span
+				class={`font-heading text-xs font-semibold tracking-[0.03em] uppercase transition-all duration-200 ${activeStep === 'payload' ? 'text-foreground' : 'text-muted-foreground'}`}
+				>Payload</span
 			>
-				{#snippet trigger({ open, value })}
-					<span class="flex items-center gap-2 w-full py-2.5 px-3 bg-secondary border border-border text-foreground cursor-pointer text-sm transition-colors duration-200 hover:border-ring">
-						<span class="text-[0.7rem] font-semibold uppercase tracking-[0.05em] text-muted-foreground">Type</span>
-						<span class="flex-1 font-medium">{payloadLabels[value as PayloadType]}</span>
-						<svg
-							class="transition-transform duration-150 text-muted-foreground {open ? 'rotate-180' : ''}"
-							width="14"
-							height="14"
-							viewBox="0 0 14 14"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.5"><path d="M4 6l3 3 3-3" /></svg
-						>
-					</span>
-				{/snippet}
-			</Dropdown>
-			<PayloadForm />
-		</section>
-	</div>
-</div>
-
-<!-- Sub-accordion: Appearance -->
-<h4 class="m-0">
-	<button
-		type="button"
-		class={subAccordionTriggerCls}
-		aria-expanded={activeStep === 'styling'}
-		aria-controls="styling-panel"
-		id="styling-trigger"
-		onclick={() => onactivestepchange('styling')}
-	>
-		<span class="font-heading text-xs font-semibold tracking-[0.03em] uppercase transition-all duration-200 {activeStep === 'styling' ? 'text-foreground' : 'text-muted-foreground'}">Appearance</span>
-		<svg
-			class="transition-transform duration-200 text-muted-foreground shrink-0 {activeStep === 'styling' ? 'rotate-180' : ''}"
-			width="14"
-			height="14"
-			viewBox="0 0 16 16"
-			fill="none"
-			stroke="currentColor"
-			stroke-width="1.5"
-			aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg
+			<span
+				class={cn(
+					'flex min-w-0 flex-1 items-center gap-2 px-3',
+					qrState.isOverCapacity &&
+						'[&_.budget-fill]:!bg-destructive [&_.budget-label]:!text-destructive'
+				)}
+			>
+				<span class="block h-[3px] flex-1 overflow-hidden bg-border">
+					<span
+						class="budget-fill block h-full bg-muted-foreground transition-[width] duration-150"
+						style:width={`${Math.min((qrState.encodedByteLength / qrState.maxBytes) * 100, 100)}%`}
+					></span>
+				</span>
+				<span
+					class="budget-label text-[0.6rem] font-semibold whitespace-nowrap text-muted-foreground tabular-nums"
+				>
+					{qrState.encodedByteLength}<span class="mx-[0.1em] opacity-40">/</span>{qrState.maxBytes}
+				</span>
+			</span>
+		</Accordion.Trigger>
+		<Accordion.Content
+			class={`flex min-h-0 flex-col gap-3 ${activeStep === 'payload' ? 'pb-2' : 'pb-0'}`}
 		>
-	</button>
-</h4>
+			<section
+				class={cn(
+					'flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto',
+					qrState.isOverCapacity &&
+						'[&_input]:!border-destructive [&_input:focus]:!border-destructive [&_textarea]:!border-destructive [&_textarea:focus]:!border-destructive'
+				)}
+				aria-label="QR generation form"
+			>
+				<Select.Root
+					type="single"
+					value={qrState.payloadType}
+					onValueChange={(value: string) => qrState.setPayloadType(value as PayloadType)}
+				>
+					<Select.Trigger class="h-auto w-full px-3 py-2.5 hover:border-ring">
+						<span class="flex w-full items-center gap-2">
+							<span
+								class="text-[0.7rem] font-semibold tracking-[0.05em] text-muted-foreground uppercase"
+								>Type</span
+							>
+							<span class="flex-1 font-medium">{payloadLabels[qrState.payloadType]}</span>
+						</span>
+					</Select.Trigger>
+					<Select.Content sideOffset={0}>
+						{#each payloadTypeItems as item (item.value)}
+							<Select.Item value={item.value} label={item.label} class="h-9">
+								<span class="flex h-full w-full items-center px-3">{item.label}</span>
+							</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+				<PayloadForm />
+			</section>
+		</Accordion.Content>
+	</Accordion.Item>
 
-<div
-	id="styling-panel"
-	class="grid min-h-0 overflow-hidden transition-[grid-template-rows] duration-250 {activeStep === 'styling' ? 'grid-rows-[1fr] flex-[1_1_0px]' : 'grid-rows-[0fr] flex-[0_0_auto]'}"
-	role="region"
-	aria-labelledby="styling-trigger"
->
-	<div class="flex flex-col gap-3 overflow-hidden min-h-0 {activeStep === 'styling' ? 'h-auto pb-2' : 'h-0'}">
-		<AppearanceForm />
-	</div>
-</div>
+	<Accordion.Item
+		value="styling"
+		class={`flex flex-col ${activeStep === 'styling' ? 'flex-1' : ''}`}
+	>
+		<Accordion.Trigger class="w-full py-2">
+			<span
+				class={`font-heading text-xs font-semibold tracking-[0.03em] uppercase transition-all duration-200 ${activeStep === 'styling' ? 'text-foreground' : 'text-muted-foreground'}`}
+				>Appearance</span
+			>
+		</Accordion.Trigger>
+		<Accordion.Content
+			class={`flex min-h-0 flex-col gap-3 ${activeStep === 'styling' ? 'pb-2' : 'pb-0'}`}
+		>
+			<AppearanceForm />
+		</Accordion.Content>
+	</Accordion.Item>
+</Accordion.Root>
