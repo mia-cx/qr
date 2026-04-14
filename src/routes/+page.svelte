@@ -42,6 +42,14 @@
 <svelte:head>
 	<title>qrfor.ge</title>
 	<meta name="description" content="QR code generator and reader" />
+	<meta property="og:type" content="website" />
+	<meta property="og:site_name" content="qrfor.ge" />
+	<meta property="og:title" content="qrfor.ge" />
+	<meta property="og:description" content="QR code generator and reader" />
+	<meta property="og:url" content="https://qrfor.ge" />
+	<meta name="twitter:card" content="summary" />
+	<meta name="twitter:title" content="qrfor.ge" />
+	<meta name="twitter:description" content="QR code generator and reader" />
 </svelte:head>
 
 <main
