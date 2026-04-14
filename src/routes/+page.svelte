@@ -40,7 +40,7 @@
 
 <svelte:window onpaste={handlePaste} />
 <svelte:head>
-	<title>qr.mia.cx</title>
+	<title>qrfor.ge</title>
 	<meta name="description" content="QR code generator and reader" />
 </svelte:head>
 
