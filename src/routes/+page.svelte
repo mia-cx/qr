@@ -57,7 +57,7 @@
 		>
 			<div class="flex items-baseline gap-0.5" id="app-subtitle">
 				<span class="font-heading text-xl leading-[1.5] font-bold text-foreground">QR</span>
-				<span class="font-heading text-xs leading-[1.5] text-muted-foreground">.mia.cx</span>
+				<span class="font-heading text-xs leading-[1.5] text-muted-foreground">for.ge</span>
 			</div>
 			<ThemeSwitcher />
 		</header>

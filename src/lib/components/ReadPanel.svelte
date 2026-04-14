@@ -226,6 +226,12 @@
 	</p>
 </section>
 
+<p class="border border-border bg-secondary px-3 py-2 text-xs leading-[1.45] text-muted-foreground" role="note">
+	Reader disclaimer: this feature is still in development and currently works best with
+	basic, easy-to-read QR codes. Some QR codes generated with this app may also not be
+	readable yet.
+</p>
+
 <div class="flex flex-col gap-2">
 	{#if isCapturing && captureMode === 'webcam'}
 		<div class="relative">

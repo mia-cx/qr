@@ -14,13 +14,13 @@
 		"production": {
 			"routes": [
 				{
-					"pattern": "qr.mia.cx",
-					"zone_name": "mia.cx",
+					"pattern": "qrfor.ge",
+					"zone_name": "qrfor.ge",
 					"custom_domain": true
 				},
 				{
-					"pattern": "qr.mia.cx/*",
-					"zone_name": "mia.cx"
+					"pattern": "qrfor.ge/*",
+					"zone_name": "qrfor.ge"
 				}
 			]
 		}
