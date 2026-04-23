@@ -1,8 +1,8 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "qr",
+	"name": "qrforge",
 	"compatibility_date": "2026-04-08",
-	"compatibility_flags": ["nodejs_als"],
+	"compatibility_flags": ["nodejs_compat"],
 	"main": ".svelte-kit/cloudflare/_worker.js",
 	"assets": {
 		"binding": "ASSETS",
@@ -10,16 +10,27 @@
 	},
 	"workers_dev": true,
 	"preview_urls": true,
+	"routes": [
+		{
+			"pattern": "qrfor.ge",
+			"zone_name": "qrfor.ge",
+			"custom_domain": true
+		},
+		{
+			"pattern": "qrfor.ge/*",
+			"zone_name": "qrfor.ge"
+		}
+	],
 	"env": {
-		"production": {
+		"staging": {
 			"routes": [
 				{
-					"pattern": "qrfor.ge",
+					"pattern": "staging.qrfor.ge",
 					"zone_name": "qrfor.ge",
 					"custom_domain": true
 				},
 				{
-					"pattern": "qrfor.ge/*",
+					"pattern": "staging.qrfor.ge/*",
 					"zone_name": "qrfor.ge"
 				}
 			]
